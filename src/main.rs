@@ -16,14 +16,16 @@ enum Value {
 type Card = (Suit,Value);
 
 struct Hand  {
-  player: Uuid,
+  id: Uuid,
+  player: Uuid, 
+  game: Uuid,
   cards: Vec<Card>,
+  dealer: bool,
 } 
 
-struct GameController {
-  deck: Vec<Card>,
-  hands: Vec<Hand>, // dealers hand is thr first in list
-}
+type Deck = Vec<Card>;
+
+
 
 fn hand_value(cards: &Vec<Card>) -> u33 {
   0
@@ -33,26 +35,10 @@ fn hand_bust(cards:&Vec<Card>) -> bool {
   hand_value(cards) > 21
 }
 
-fn is_finished(dealer: &Vec<Hand>, hands: &Vec<Hand>) -> bool {
-  let players_out = hands
-    .iter()
-    .all(|h| hand_bust(h.cards))
-  
-  players_out || hand_bust(h.cards)
-}
-
-fn simulate_round(deck: &mut Vec<Card>, dealer: &mut Vec<Card>, hands: &mut Vec<Hand>) -> bool {
-  if is_finished(&hands[0], &hands[1..]) {
-    return false;
-  }
-  
-  step(deck, hands);
-  broadcast_results(hands);
-}
-
 enum Action {
   Hit,
   Hold,
+  Split,
 }
 
 enum HandState {
@@ -61,36 +47,54 @@ enum HandState {
   Lost,
 }
 
-fn resolve_player_action(action: Action, cards: &mut Vec<Card>, deck: &mut Vec<Card>) -> Result<HandState> {
+//pair mapping hand to an action 
+type HandAction = (Uuid,Action);
+
+struct DataSource {
+  decks: HashMap<Uuid,Deck>, // map of game_id to Deck for a given game
+  hands: Vec<Hand>, 
+  actions: Vec<HandAction>,
+}
+
+
+
+
+//
+// Systems/Controllers
+//
+
+
+
+pub fn process_actions(actions: &Vec<HandAction>, hands: Vec<Hand>, decks: Vec<Deck>) -> Result<()> {
+  for ha in actions {
+    let (uuid, action) = ha; 
+    let hand = hands.find(uuid)?;
+    let deck = decks.find(get_game(uuid))?;
+    
+    hand.state = resolve_player_action(action, &mut hand.cards, &mut deck)?;
+  }
+  
+  Ok(())
+}
+
+fn resolve_player_action(action: Action, cards: &mut Vec<Card>, deck: &mut Vec<Card>) -> Result<()> {
   switch action {
     Hit => {
       let c = draw(deck)?;
-      h.cards.push(c);
+      cards.push(c);
     },
     Hold => { 
       // do nothing? 
-    }
+    },
+    //Split => {}
   }
   
-  let mut r = Outcome::Active;
-  if is_bust(cards) {
-    r = Outcome::Lost;
-  }
-  
-  Ok(r) 
+  Ok(())
 }
 
-impl GameController {
-  fn resolve(self: &Self, player: Uuid, action: Action) -> Result<> {
-    let hand = self.get_active_hand(uuid)?;
-    hand.state = resolve_player_action(action, hand.cards, &self.deck)?;
-    
-    self.active_hand = self.active_hand+1;
-    if are_players_finished() {
-      resolve_dealer();
-      if is_finished() {
-        // report results
-      }   
-    }
-  } 
-}
+
+// turn sequence; the order in which players take turns (with the dealer going last)
+
+// action validation; an action is only balid if its that players turn to go.
+
+// Rules engine?
