@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
-enum Suit {
+pub enum Suit {
     Hearts,
     Diamonds,
     Clubs,
     Spades,
 }
 
-enum Value {
+pub enum Value {
     Ace,
     King,
     Queen,
@@ -16,9 +16,9 @@ enum Value {
     Value(u8),
 }
 
-type Card = (Suit, Value);
+pub type Card = (Suit, Value);
 
-struct Hand {
+pub struct Hand {
     id: Uuid,
     player: Uuid,
     game: Uuid,
@@ -34,7 +34,7 @@ fn hand_bust(cards: &Vec<Card>) -> bool {
     hand_value(cards) > 21
 }
 
-type Deck = Vec<Card>;
+pub type Deck = Vec<Card>;
 
 enum DeckError {
     Empty,
@@ -44,7 +44,7 @@ fn draw(deck: &mut Deck) -> Result<Card, DeckError> {
     deck.pop().ok_or(DeckError::Empty)
 }
 
-enum Action {
+pub enum Action {
     Hit,
     Hold,
     Split,
@@ -57,9 +57,9 @@ enum HandState {
 }
 
 //pair mapping hand to an action
-type HandAction = (Uuid, Action);
+pub type HandAction = (Uuid, Action);
 
-struct DataSource {
+pub struct DataSource {
     decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
     hands: Vec<Hand>,
     actions: Vec<HandAction>,
@@ -69,12 +69,12 @@ struct DataSource {
 // Systems/Controllers
 //
 
-enum ActionResolutionError {
+pub enum ActionResolutionError {
     MissingResource,
     EmptyDeck,
 }
 
-fn process_actions(
+pub fn process_actions(
     actions: &Vec<HandAction>,
     hands: &mut Vec<Hand>,
     decks: &mut HashMap<Uuid, Deck>,
@@ -97,7 +97,7 @@ fn process_actions(
     Ok(())
 }
 
-fn resolve_player_action(
+pub fn resolve_player_action(
     action: &Action,
     cards: &mut Vec<Card>,
     deck: &mut Vec<Card>,
