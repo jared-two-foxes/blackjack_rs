@@ -36,6 +36,11 @@ fn hand_bust(cards: &Vec<Card>) -> bool {
 
 pub type Deck = Vec<Card>;
 
+pub fn new_deck() -> Deck {
+    // Todo: Create a deck with all of the cards in it.
+    vec![(Suit::Hearts, Value::King)]
+}
+
 enum DeckError {
     Empty,
 }
@@ -59,10 +64,42 @@ enum HandState {
 //pair mapping hand to an action
 pub type HandAction = (Uuid, Action);
 
+#[derive(Default)]
 pub struct DataSource {
-    decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
-    hands: Vec<Hand>,
-    actions: Vec<HandAction>,
+    pub decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
+    pub hands: Vec<Hand>,
+    pub actions: Vec<HandAction>,
+}
+
+pub fn add_game(ds: &mut DataSource) -> Uuid {
+    let game_id = Uuid::default();
+    ds.decks.insert(game_id, new_deck());
+    ds.hands.push(Hand {
+        id: Uuid::default(),
+        player: Uuid::default(),
+        game: game_id,
+        cards: Vec::new(),
+        dealer: true,
+    });
+    game_id
+}
+
+pub fn add_player(ds: &mut DataSource, game_id: Uuid) -> Uuid {
+    let player_id = Uuid::default();
+    ds.hands.push(Hand {
+        id: Uuid::default(),
+        player: player_id,
+        game: game_id,
+        cards: Vec::new(),
+        dealer: false,
+    });
+
+    player_id
+}
+
+// Should this return a uuid or something to identify the Action passed?
+pub fn add_action(ds: &mut DataSource, hand_id: Uuid, action: Action) {
+    ds.actions.push((hand_id, action));
 }
 
 //
@@ -90,8 +127,7 @@ pub fn process_actions(
             .ok_or(ActionResolutionError::MissingResource)?;
 
         /*hand.state =*/
-        resolve_player_action(action, &mut hand.cards, deck)
-            .map_err(|_| ActionResolutionError::EmptyDeck);
+        resolve_player_action(action, &mut hand.cards, deck)?;
     }
 
     Ok(())
@@ -101,10 +137,10 @@ pub fn resolve_player_action(
     action: &Action,
     cards: &mut Vec<Card>,
     deck: &mut Vec<Card>,
-) -> Result<(), DeckError> {
+) -> Result<(), ActionResolutionError> {
     match action {
         Action::Hit => {
-            let c = draw(deck)?;
+            let c = draw(deck).map_err(|_| ActionResolutionError::EmptyDeck)?;
             cards.push(c);
         }
         Action::Hold => {
