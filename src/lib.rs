@@ -27,7 +27,20 @@ pub struct Hand {
 }
 
 fn hand_value(cards: &Vec<Card>) -> u32 {
-    0
+    let mut ace_count = 0;
+    let mut value = cards.iter().map(|c| {
+      match c.1 {
+        Value::Value(v) => v,
+        Value::Ace => { ace_count = ace_count + 1; 11 }
+        _ => 10
+      }
+    }).sum::<u32>();
+    for i in ..ace_count {
+      if value > 21 {
+        value = value - 10;
+      } 
+    }
+    value
 }
 
 fn hand_bust(cards: &Vec<Card>) -> bool {
