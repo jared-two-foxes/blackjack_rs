@@ -51,7 +51,67 @@ pub type Deck = Vec<Card>;
 
 pub fn new_deck() -> Deck {
     // Todo: Create a deck with all of the cards in it.
-    vec![(Suit::Hearts, Value::King)]
+    vec![
+      (Suit::Hearts, Value::Ace),
+      (Suit::Hearts, Value::King),
+      (Suit::Hearts, Value::Queen),
+      (Suit::Hearts, Value::Jack),
+      (Suit::Hearts, Value::Value(10)),
+      (Suit::Hearts, Value::Value(9)),
+      (Suit::Hearts, Value::Value(8)),
+      (Suit::Hearts, Value::Value(7)),
+      (Suit::Hearts, Value::Value(6)),
+      (Suit::Hearts, Value::Value(5)),
+      (Suit::Hearts, Value::Value(4)),
+      (Suit::Hearts, Value::Value(3)),
+      (Suit::Hearts, Value::Value(2)),
+      (Suit::Hearts, Value::Value(1)),
+      
+      (Suit::Diamonds, Value::Ace),
+      (Suit::Diamonds, Value::King),
+      (Suit::Diamonds, Value::Queen),
+      (Suit::Diamonds, Value::Jack),
+      (Suit::Diamonds, Value::Value(10)),
+      (Suit::Diamonds, Value::Value(9)),
+      (Suit::Diamonds, Value::Value(8)),
+      (Suit::Diamonds, Value::Value(7)),
+      (Suit::Diamonds, Value::Value(6)),
+      (Suit::Diamonds, Value::Value(5)),
+      (Suit::Diamonds, Value::Value(4)),
+      (Suit::Diamonds, Value::Value(3)),
+      (Suit::Diamonds, Value::Value(2)),
+      (Suit::Diamonds, Value::Value(1)),
+      
+      (Suit::Clubs, Value::Ace),
+      (Suit::Clubs, Value::King),
+      (Suit::Clubs, Value::Queen),
+      (Suit::Clubs, Value::Jack),
+      (Suit::Clubs, Value::Value(10)),
+      (Suit::Clubs, Value::Value(9)),
+      (Suit::Clubs, Value::Value(8)),
+      (Suit::Clubs, Value::Value(7)),
+      (Suit::Clubs, Value::Value(6)),
+      (Suit::Clubs, Value::Value(5)),
+      (Suit::Clubs, Value::Value(4)),
+      (Suit::Clubs, Value::Value(3)),
+      (Suit::Clubs, Value::Value(2)),
+      (Suit::Clubs, Value::Value(1)),
+      
+      (Suit::Spades, Value::Ace),
+      (Suit::Spades, Value::King),
+      (Suit::Spades, Value::Queen),
+      (Suit::Spades, Value::Jack),
+      (Suit::Spades, Value::Value(10)),
+      (Suit::Spades, Value::Value(9)),
+      (Suit::Spades, Value::Value(8)),
+      (Suit::Spades, Value::Value(7)),
+      (Suit::Spades, Value::Value(6)),
+      (Suit::Spades, Value::Value(5)),
+      (Suit::Spades, Value::Value(4)),
+      (Suit::Spades, Value::Value(3)),
+      (Suit::Spades, Value::Value(2)),
+      (Suit::Spades, Value::Value(1)),
+    ]
 }
 
 enum DeckError {
