@@ -16,4 +16,3 @@ fn can_setup_games() {
 
     assert!(false); // Need to figure out exactly what we are asserting on.
 }
-
