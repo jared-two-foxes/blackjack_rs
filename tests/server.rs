@@ -21,4 +21,3 @@ fn can_play_a_simple_game() {
     assert_eq!(blackjack::Outcome::Won, get_game_outcome(&ds. 
     hands, hand_id));
 }
-
