@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
-//#[derive(Clone)]
 pub enum Suit {
     Hearts,
     Diamonds,
@@ -9,7 +8,6 @@ pub enum Suit {
     Spades,
 }
 
-//#[derive(Clone)]
 pub enum Value {
     Ace,
     King,
@@ -18,18 +16,12 @@ pub enum Value {
     Value(u8),
 }
 
-/*#[derive(Clone)]
-pub struct Card {
-    s: Suit,
-    v: Value,
-}*/
 pub type Card = (Suit, Value);
 
 pub struct Hand {
     id: Uuid,
     player: Uuid,
     game: Uuid,
-    cards: Vec<Card>,
     dealer: bool,
 }
 
@@ -61,7 +53,6 @@ fn hand_bust(cards: &Vec<Card>) -> bool {
 pub type Deck = Vec<Card>;
 
 pub fn new_deck() -> Deck {
-    // Todo: Create a deck with all of the cards in it.
     vec![
         (Suit::Hearts, Value::Ace),
         (Suit::Hearts, Value::King),
@@ -122,13 +113,9 @@ pub fn new_deck() -> Deck {
     ]
 }
 
-enum DeckError {
-    Empty,
-}
-
-// This is kinda an optional return, theres only one way that it can error.
-fn draw(deck: &mut Deck) -> Result<Card, DeckError> {
-    deck.pop().ok_or(DeckError::Empty)
+pub struct CardAllocation {
+    hand: Uuid,
+    card_idx: usize,
 }
 
 pub enum Action {
@@ -148,8 +135,9 @@ pub type HandAction = (Uuid, Action);
 
 #[derive(Default)]
 pub struct DataSource {
-    pub decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
     pub hands: Vec<Hand>,
+    pub decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
+    pub allocations: Vec<CardAllocation>,
     pub actions: Vec<HandAction>,
 }
 
@@ -165,7 +153,6 @@ pub fn add_game(ds: &mut DataSource) -> Uuid {
         id: Uuid::default(),
         player: Uuid::default(),
         game: game_id,
-        cards: Vec::new(),
         dealer: true,
     });
     game_id
@@ -177,7 +164,6 @@ pub fn add_player(ds: &mut DataSource, game_id: Uuid) -> Uuid {
         id: Uuid::default(),
         player: player_id,
         game: game_id,
-        cards: Vec::new(),
         dealer: false,
     });
 
@@ -196,67 +182,45 @@ pub fn add_action(ds: &mut DataSource, hand_id: Uuid, action: Action) {
 //
 
 pub enum ActionResolutionError {
-    MissingResource,
-    EmptyDeck,
+    MissingHand,
+    MissingDeck,
 }
 
 // Currently this function has side-effects, I wonder if there is a reasonable
 // way to indicate this in rust via naming or something?
 //
-//@todo: Make this function pure by moving the mutatable parts out.
+//@note: Making the assumpting here that there is not going to be any actions
+//       in this list that are going to end up hitting the same deck and therefore
+//       invalidating the number deck index calculated from the allocations list.
+//
 pub fn process_actions(
     actions: &Vec<HandAction>,
-    hands: &mut Vec<Hand>,
-    decks: &mut HashMap<Uuid, Deck>,
-) -> Result<Vec<Hand>, ActionResolutionError> {
-    actions
-        .iter()
-        .map(|ha| process_single_action(ha, hands, decks))
-        .collect::<_>()
-}
-
-fn process_single_action(
-    hand_action: &HandAction,
-    hands: &mut Vec<Hand>,
-    decks: &mut HashMap<Uuid, Deck>,
-) -> Result<Hand, ActionResolutionError> {
-    let (uuid, action) = hand_action;
-    let hand = hands
-        .iter()
-        .find(|h| h.id == *uuid)
-        .ok_or(ActionResolutionError::MissingResource)?;
-    let deck = decks
-        .get_mut(&hand.game)
-        .ok_or(ActionResolutionError::MissingResource)?;
-
-    Ok(Hand {
-        cards: resolve_player_action(action, hand.cards, deck)?,
-        ..*hand
-    })
-}
-
-pub fn resolve_player_action(
-    action: &Action,
-    mut cards: Vec<Card>,
-    deck: &mut Deck,
-) -> Result<Vec<Card>, ActionResolutionError> {
-    match action {
-        Action::Hit => {
-            let c = draw(deck).map_err(|_| ActionResolutionError::EmptyDeck)?;
-            cards.push(c);
-        }
-        Action::Hold => {
-            // do nothing?
-        }
-        Action::Split => {
-            unimplemented!();
+    allocations: &[CardAllocation],
+) -> Vec<CardAllocation> {
+    let mut new_allocations = Vec::new();
+    for ha in actions {
+        let (hand, action) = ha;
+        match action {
+            Action::Hit => {
+                let card_idx = allocations.iter().filter(|a| a.hand == *hand).count();
+                new_allocations.push(CardAllocation {
+                    card_idx,
+                    hand: *hand,
+                });
+            }
+            Action::Hold => {
+                // do nothing?
+            }
+            Action::Split => {
+                unimplemented!();
+            }
         }
     }
 
-    Ok(cards)
+    new_allocations
 }
 
-pub fn resolve_hand_state(hands: &Vec<Hand>) -> Vec<Hand> {
+pub fn resolve_hand_states(hands: &[Hand], card_allocations: &[CardAllocation]) -> Vec<Hand> {
     unimplemented!();
 }
 
