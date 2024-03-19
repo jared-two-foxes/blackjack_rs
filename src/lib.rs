@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
+//#[derive(Clone)]
 pub enum Suit {
     Hearts,
     Diamonds,
@@ -8,6 +9,7 @@ pub enum Suit {
     Spades,
 }
 
+//#[derive(Clone)]
 pub enum Value {
     Ace,
     King,
@@ -16,6 +18,11 @@ pub enum Value {
     Value(u8),
 }
 
+/*#[derive(Clone)]
+pub struct Card {
+    s: Suit,
+    v: Value,
+}*/
 pub type Card = (Suit, Value);
 
 pub struct Hand {
@@ -119,6 +126,7 @@ enum DeckError {
     Empty,
 }
 
+// This is kinda an optional return, theres only one way that it can error.
 fn draw(deck: &mut Deck) -> Result<Card, DeckError> {
     deck.pop().ok_or(DeckError::Empty)
 }
@@ -144,6 +152,11 @@ pub struct DataSource {
     pub hands: Vec<Hand>,
     pub actions: Vec<HandAction>,
 }
+
+//@thoughts: Should something that takes a mut ref be part of the impl block of
+//           that object?  For example should the add_player & add_action
+//           methods bellow be member functions as they directly manipulate
+//           the DataSource?
 
 pub fn add_game(ds: &mut DataSource) -> Uuid {
     let game_id = Uuid::default();
@@ -171,7 +184,9 @@ pub fn add_player(ds: &mut DataSource, game_id: Uuid) -> Uuid {
     player_id
 }
 
-// Should this return a uuid or something to identify the Action passed?
+//@todo: I think this should this return a uuid; reasons 2 fold, we probably
+//       should have a means to identify the action, and we dont want methods
+//       with no return type.
 pub fn add_action(ds: &mut DataSource, hand_id: Uuid, action: Action) {
     ds.actions.push((hand_id, action));
 }
@@ -185,33 +200,46 @@ pub enum ActionResolutionError {
     EmptyDeck,
 }
 
+// Currently this function has side-effects, I wonder if there is a reasonable
+// way to indicate this in rust via naming or something?
+//
+//@todo: Make this function pure by moving the mutatable parts out.
 pub fn process_actions(
     actions: &Vec<HandAction>,
     hands: &mut Vec<Hand>,
     decks: &mut HashMap<Uuid, Deck>,
-) -> Result<(), ActionResolutionError> {
-    for ha in actions {
-        let (uuid, action) = ha;
-        let hand = hands
-            .iter_mut()
-            .find(|h| h.id == *uuid)
-            .ok_or(ActionResolutionError::MissingResource)?;
-        let deck = decks
-            .get_mut(&hand.game)
-            .ok_or(ActionResolutionError::MissingResource)?;
+) -> Result<Vec<Hand>, ActionResolutionError> {
+    actions
+        .iter()
+        .map(|ha| process_single_action(ha, hands, decks))
+        .collect::<_>()
+}
 
-        /*hand.state =*/
-        resolve_player_action(action, &mut hand.cards, deck)?;
-    }
+fn process_single_action(
+    hand_action: &HandAction,
+    hands: &mut Vec<Hand>,
+    decks: &mut HashMap<Uuid, Deck>,
+) -> Result<Hand, ActionResolutionError> {
+    let (uuid, action) = hand_action;
+    let hand = hands
+        .iter()
+        .find(|h| h.id == *uuid)
+        .ok_or(ActionResolutionError::MissingResource)?;
+    let deck = decks
+        .get_mut(&hand.game)
+        .ok_or(ActionResolutionError::MissingResource)?;
 
-    Ok(())
+    Ok(Hand {
+        cards: resolve_player_action(action, hand.cards, deck)?,
+        ..*hand
+    })
 }
 
 pub fn resolve_player_action(
     action: &Action,
-    cards: &mut Vec<Card>,
-    deck: &mut Vec<Card>,
-) -> Result<(), ActionResolutionError> {
+    mut cards: Vec<Card>,
+    deck: &mut Deck,
+) -> Result<Vec<Card>, ActionResolutionError> {
     match action {
         Action::Hit => {
             let c = draw(deck).map_err(|_| ActionResolutionError::EmptyDeck)?;
@@ -225,7 +253,11 @@ pub fn resolve_player_action(
         }
     }
 
-    Ok(())
+    Ok(cards)
+}
+
+pub fn resolve_hand_state(hands: &Vec<Hand>) -> Vec<Hand> {
+    unimplemented!();
 }
 
 // turn sequence; the order in which players take turns (with the dealer going last)
