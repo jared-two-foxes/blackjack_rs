@@ -118,10 +118,10 @@ pub struct CardAllocation {
     pub card_idx: usize,
 }
 
+//@todo: i think its a good idea to split this out since the outcome of these actions is different which is making it hard to build out the functions to process as the return types get hard
 pub enum Action {
     Hit,
     Hold,
-    Split,
 }
 
 //< @todo:  We should store the hand value here.
@@ -201,34 +201,22 @@ pub enum ActionResolutionError {
 //@note: Turns out that this currently doesnt actually work.  The card allocation
 //       needs to know what deck its allocated from as well else I cant actually
 //       rebuild the cards that the hand has.
-pub fn process_actions(
+pub fn process_hit_actions(
     actions: &Vec<HandAction>,
     allocations: &[CardAllocation],
 ) -> Vec<CardAllocation> {
-    let mut new_allocations = Vec::new();
-    for ha in actions {
-        let (hand, action) = ha;
-        match action {
-            Action::Hit => {
+    actions.iter().filter(|(_,action) matches!(Action::Hit, action)).map(|(hand,_)|
+    {
                 let card_idx = allocations.iter().filter(|a| a.hand == *hand).count();
                 new_allocations.push(CardAllocation {
                     card_idx,
                     hand: *hand,
                 });
             }
-            Action::Hold => {
-                // do nothing?
-            }
-            Action::Split => {
-                unimplemented!();
-            }
-        }
-    }
-
-    new_allocations
+    }).collect::<Vec<_>>()
 }
 
-pub fn resolve_hand_states(
+pub fn process_hand_states(
     hands: &[Hand],
     card_allocations: &[CardAllocation],
     decks: &HashMap<Uuid, Deck>,
@@ -250,6 +238,21 @@ pub fn resolve_hand_states(
         hand_states.push((h.id, state));
     }
     hand_states
+}
+
+pub fn process_hold_actions(
+    actions: &Vec<HandAction>,
+    allocations: &[CardAllocation],
+) -> Vec<HandState> {
+    actions.iter().filter(|(_,action) matches!(Action::Hold, action)).map(|(hand,_)| {
+    //@todo here we need to output the hand state.
+    let cards = card_allocations
+            .iter()
+            .filter(|a| a.hand == h.id)
+            .map(|a| &deck[a.card_idx])
+            .collect::<Vec<_>>();
+    HandState(hand, State::Holding(hand_value(cards)) 
+    }).collect::<Vec<_>>()
 }
 
 pub fn resolve_table_state(
@@ -304,6 +307,7 @@ pub enum Outcome {
     Won,
     Lost,
 }
+
 pub type HandOutcome = (Uuid, Outcome);
 
 //@todo: This assumes that hands are specific for a given game
