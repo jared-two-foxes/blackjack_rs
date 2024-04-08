@@ -197,10 +197,6 @@ pub enum ActionResolutionError {
 //@note: Making the assumpting here that there is not going to be any actions
 //       in this list that are going to end up hitting the same deck and therefore
 //       invalidating the number deck index calculated from the allocations list.
-//
-//@note: Turns out that this currently doesnt actually work.  The card allocation
-//       needs to know what deck its allocated from as well else I cant actually
-//       rebuild the cards that the hand has.
 pub fn process_hit_actions(
     actions: &Vec<HandAction>,
     allocations: &[CardAllocation],
@@ -224,28 +220,34 @@ pub fn process_hand_states(
     let mut hand_states = Vec::new();
     for h in hands {
         let deck = decks.get(&h.game).expect("Unable to find deck for table");
+        //@note: its probably faster to just build the hand values by iterating this once and building it as we go foldish style and then map that into a hand_state rather than iterate all the allocations for each hand like this.
         let cards = card_allocations
             .iter()
             .filter(|a| a.hand == h.id)
             .map(|a| &deck[a.card_idx])
             .collect::<Vec<_>>();
 
-        let state = if hand_bust(&cards) {
-            State::Bust
-        } else {
-            State::Active
+        //@note: its probably better to just not add the actives here rather than strip them out later.
+        let state = match  hand_value(&cards) {
+            0..=20 => State::Active,
+            21 => State::BlackJack,
+            _ => State::Bust,
         };
         hand_states.push((h.id, state));
     }
-    hand_states
+    
+    // and strip out all the Active's because we dont want to report those.
+    
+    hand_states.iter().filter(|hs| not matches!(hs, State::Active)).collect()
 }
 
 pub fn process_hold_actions(
     actions: &Vec<HandAction>,
     allocations: &[CardAllocation],
+    decks: &HashMap<Uuid, Deck>
 ) -> Vec<HandState> {
     actions.iter().filter(|(_,action) matches!(Action::Hold, action)).map(|(hand,_)| {
-    //@todo here we need to output the hand state.
+    let deck = decks.get(&hand.game).expect("Unable to find deck for table");
     let cards = card_allocations
             .iter()
             .filter(|a| a.hand == h.id)
@@ -255,7 +257,7 @@ pub fn process_hold_actions(
     }).collect::<Vec<_>>()
 }
 
-pub fn resolve_table_state(
+/*pub fn resolve_table_state(
     decks: &HashMap<Uuid, Deck>,
     hands: &[Hand],
     allocations: &[CardAllocation],
@@ -301,7 +303,7 @@ pub fn resolve_table_state(
             .collect::<Vec<_>>();
     });
     hand_states
-}
+}*/
 
 pub enum Outcome {
     Won,
@@ -310,17 +312,23 @@ pub enum Outcome {
 
 pub type HandOutcome = (Uuid, Outcome);
 
-//@todo: This assumes that hands are specific for a given game
-pub fn process_results(hands: &Vec<Hand>, hand_values: &Vec<(Uuid, u8)>) -> Vec<HandOutcome> {
+//
+pub fn resolve_outcomes(hands: &Vec<Hand>, hand_values: &Vec<(Uuid, u8)>) -> Vec<HandOutcome> {
     let outcomes = Vec::new();
+    
+    //@todo: partition list based on completed tables? Group by table? Extract dealers? 
 
+    // we could potentially order the hands list to ensure that all the dealers are listed first.  also might make sense to have the dealers uuid on the hand rather than a "table", a table data struct doesnt really do much where as we can use dealer like a "parent" and then order that way.
+    
+    // i do like this idea but im not quite sure how to get it to work.  i think there needs to be a step in response to adding a new hand_state that walks the list looking for children of a given parent.
+    
     // identify the dealer on the table.
     let dealer = hands
         .iter()
         .find(|h| h.dealer)
         .expect("Unable to find dealer");
 
-    //Extract the dealers hand from the list
+    // Extract the dealers hand from the list
     let dealer_idx = hand_values
         .iter()
         .position(|(&id, _)| id == dealer.id)
@@ -329,16 +337,16 @@ pub fn process_results(hands: &Vec<Hand>, hand_values: &Vec<(Uuid, u8)>) -> Vec<
 
     // Check if the dealer has bust
     if dealer_hand_value > 21 {
-        unimplemented!(); //@todo: All holding hands win.
-    } else {
+        unimplemented!(); //@todo: All non-busted hands win.
+    } else if dealer_hand_value == 21 { 
+        // all hands lose
+    } else {  
         // hand_values now only contains the player hands so iterate and
         // compare them all to the dealer.
         hand_values
             .iter()
             .map(|(id, value)| {
-                let state = if value == 21 {
-                    Outcome::Won
-                } else if value > dealer_hand_value {
+                let state = if value > dealer_hand_value {
                     Outcome::Won
                 } else {
                     Outcome::Lost

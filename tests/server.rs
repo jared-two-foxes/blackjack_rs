@@ -27,10 +27,12 @@ fn can_play_a_simple_game() {
         
         
         // Check if any of the hands have busted.
-        let busted_states = blackjack::resolve_hand_states(&hands, &ds.allocations, &ds.decks);
+        let resulting_states = blackjack::resolve_hand_states(&hands, &ds.allocations, &ds.decks);
+        
+        todo!("need to add a step here to iterate hand states to check for children that need to be added");
         
         // Merge into the master state list
-        ds.hand_states.extend(busted_states);
+        ds.hand_states.extend(resulting_states);
 
         // process all if the hold actions.
         let hold_states = blackjack::process_hold_action(&ds.actions, &ds.allocations);
@@ -44,5 +46,5 @@ fn can_play_a_simple_game() {
     // determine the outcome of the game.
     blackjack::resolve_outcomes(&ds.hands, &ds.hand_states);
 
-    assert_eq!(blackjack::Outcome::Won, get_game_outcome(&hands, hand_id));
+    assert_eq!(blackjack::Outcome::Won, get_hand_outcome(hand_id, &ds.hands));
 }
