@@ -313,39 +313,29 @@ pub enum Outcome {
 pub type HandOutcome = (Uuid, Outcome);
 
 //
-pub fn resolve_outcomes(hands: &Vec<Hand>, hand_values: &Vec<(Uuid, u8)>) -> Vec<HandOutcome> {
-    let outcomes = Vec::new();
-    
-    //@todo: partition list based on completed tables? Group by table? Extract dealers? 
+pub fn resolve_outcomes(hands: &Vec<Hand>, hand_values: &Vec<(Uuid, u8)>, outcomes: Vec<Outcome>) -> Vec<HandOutcome> {
+    let idx:usize = 0;
+    let outcome_size = outcomes.len();
 
-    // we could potentially order the hands list to ensure that all the dealers are listed first.  also might make sense to have the dealers uuid on the hand rather than a "table", a table data struct doesnt really do much where as we can use dealer like a "parent" and then order that way.
-    
-    // i do like this idea but im not quite sure how to get it to work.  i think there needs to be a step in response to adding a new hand_state that walks the list looking for children of a given parent.
-    
-    // identify the dealer on the table.
-    let dealer = hands
-        .iter()
-        .find(|h| h.dealer)
-        .expect("Unable to find dealer");
-
-    // Extract the dealers hand from the list
-    let dealer_idx = hand_values
-        .iter()
-        .position(|(&id, _)| id == dealer.id)
-        .expect("Unable to find the dealers hand state");
-    let (_, dealer_hand_value) = hand_values.remove(dealer_idx);
-
-    // Check if the dealer has bust
-    if dealer_hand_value > 21 {
-        unimplemented!(); //@todo: All non-busted hands win.
-    } else if dealer_hand_value == 21 { 
-        // all hands lose
-    } else {  
-        // hand_values now only contains the player hands so iterate and
-        // compare them all to the dealer.
         hand_values
             .iter()
-            .map(|(id, value)| {
+            .filter(|(value_id,_)| { 
+                if idx > outcomes_size { return true; }
+                let (outcome_id,_) = outcomes[idx];
+                if (value_id == outcome_id) {
+                    idx += 1;
+                } 
+                value_id != outcome_id 
+            })
+            .filter_map(|(id, dealer,_)| {
+                let dealer_hand_value = hand_values.find(|(id,_,_)| dealer == id)
+                match dealer_hand_value {
+                    Some(dealer_hand) => Some(id,dealer_hand, value)
+                    _ => None
+                }
+                
+            })
+            .map(|(id, dealer, value)| {
                 let state = if value > dealer_hand_value {
                     Outcome::Won
                 } else {
@@ -354,9 +344,6 @@ pub fn resolve_outcomes(hands: &Vec<Hand>, hand_values: &Vec<(Uuid, u8)>) -> Vec
                 (id, state)
             })
             .collect::<Vec<_>>()
-    }
-
-    outcomes
 }
 
 // turn sequence; the order in which players take turns (with the dealer going last)
