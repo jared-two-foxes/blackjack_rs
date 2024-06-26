@@ -18,10 +18,35 @@ pub enum Value {
 
 pub type Card = (Suit, Value);
 
+#[derive(Clone)]
 pub struct Hand {
     pub id: Uuid,
     player: Uuid,
     dealer: Uuid,
+}
+
+fn get_dealer(hand_id: Uuid, hands: &[Hand]) -> Uuid {
+    hands
+        .iter()
+        .find(|h| hand_id == h.id)
+        .expect("Unable to find Hand")
+        .dealer
+}
+
+pub fn get_hand_value(
+    hand_id: Uuid,
+    hands: &[Hand],
+    allocations: &[CardAllocation],
+    decks: &HashMap<Uuid, Deck>,
+) -> u8 {
+    let dealer = get_dealer(hand_id, hands);
+    let deck = decks.get(&dealer).expect("Unable to find deck");
+    let cards = allocations
+        .iter()
+        .filter(|a| a.hand == hand_id)
+        .map(|a| &deck[a.card_idx])
+        .collect::<Vec<_>>();
+    hand_value(&cards)
 }
 
 fn hand_value(cards: &[&Card]) -> u8 {
@@ -308,7 +333,7 @@ pub fn resolve_outcomes(hand_values: &[HandState], outcomes: &[HandOutcome]) -> 
 }
 
 pub fn is_game_complete(dealer: Uuid, hands: &[Hand], outcomes: &[HandOutcome]) -> bool {
-    unimplemented!("for a given hand, a game is complete when all of the hands assocaited with the same dealer have an Outcome")
+    unimplemented!("for a given hand, a game is complete when all of the hands associated with the same dealer have an Outcome")
 }
 
 // @todo:  I guess we need to keep this "clone" but I dont like it.
