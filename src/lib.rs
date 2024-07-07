@@ -135,6 +135,7 @@ pub fn new_deck() -> Deck {
 
 pub struct CardAllocation {
     pub hand: Uuid,
+    pub dealer: Uuid, //< this is also dealer's uuid since that is how we identify specific decks.
     pub card_idx: usize,
 }
 
@@ -145,9 +146,10 @@ pub enum Action {
 }
 
 pub enum State {
-    Active,
+    Active, // @todo: When representing hand states in the DataSource this should not be included
+    // as it will mess with the game complete calaculation.
     Holding(u8),
-    Bust,
+    Bust(u8),
     BlackJack,
 }
 
@@ -159,6 +161,10 @@ pub type HandAction = (Uuid, Action);
 // into the array to avoid the O(n) finds required to get the dealers HandState when calculating
 // the HandOutcome.
 pub type HandState = (Uuid /*this*/, Uuid /*dealer*/, State);
+
+pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
+    hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
+}
 
 #[derive(Default)]
 pub struct DataSource {
@@ -181,7 +187,7 @@ pub fn add_game(ds: &mut DataSource) -> Uuid {
     ds.hands.push(Hand {
         id: dealer_id,
         player: dealer_id,
-        dealer: Uuid::nil(),
+        dealer: dealer_id,
     });
     dealer_id
 }
@@ -204,6 +210,10 @@ pub fn add_player(ds: &mut DataSource, dealer_id: Uuid) -> Uuid {
 //       should have a means to identify the action, and we dont want methods
 //       with no return type.
 pub fn add_action(ds: &mut DataSource, hand_id: Uuid, action: Action) {
+    match action {
+        Action::Hit => println!("Adding Hit Action"),
+        Action::Hold => println!("Adding Hold Action"),
+    };
     ds.actions.push((hand_id, action));
 }
 
@@ -220,16 +230,24 @@ pub enum ActionResolutionError {
 //       invalidating the number deck index calculated from the allocations list.
 pub fn process_hit_actions(
     actions: &[HandAction],
+    hands: &[Hand],
     allocations: &[CardAllocation],
 ) -> Vec<CardAllocation> {
+    println!("Processing Hit Actions");
     actions
         .iter()
-        .filter(|(_, action)| matches!(Action::Hit, action))
-        .map(|(hand, _)| {
-            let card_idx = allocations.iter().filter(|a| a.hand == *hand).count();
+        .filter(|(_, action)| matches!(action, Action::Hit))
+        .filter_map(|(hand_id, _)| hands.iter().find(|hand| hand.id == *hand_id))
+        .map(|hand| {
+            let card_idx = allocations
+                .iter()
+                .filter(|a| a.dealer == hand.dealer)
+                .count();
+            println!("Adding card allocation: {}", card_idx);
             CardAllocation {
                 card_idx,
-                hand: *hand,
+                dealer: hand.dealer,
+                hand: hand.id,
             }
         })
         .collect::<Vec<_>>()
@@ -253,10 +271,11 @@ pub fn process_hand_states(
             .collect::<Vec<_>>();
 
         //@note: its probably better to just not add the actives here rather than strip them out later.
-        let state = match hand_value(&cards) {
+        let hand_value = hand_value(&cards);
+        let state = match hand_value {
             0..=20 => State::Active,
             21 => State::BlackJack,
-            _ => State::Bust,
+            _ => State::Bust(hand_value),
         };
         hand_states.push((h.id, h.dealer, state));
     }
@@ -275,16 +294,10 @@ pub fn process_hold_actions(
 ) -> Vec<HandState> {
     actions
         .iter()
-        .filter(|(_, action)| matches!(Action::Hold, action))
+        .filter(|(_, action)| matches!(action, Action::Hold))
         .map(|(hand, _)| {
-            // Grab the dealers uuid.
-            let dealer_id = hands
-                .iter()
-                .find(|h| h.id == *hand)
-                .expect("Unable to find the hand of a given hand_action")
-                .dealer;
-
-            // Grab the deck for the hand
+            // Grab the deck for the hand.
+            let dealer_id = get_dealer(*hand, hands);
             let deck = decks
                 .get(&dealer_id)
                 .expect("Unable to find deck for table");
@@ -296,6 +309,8 @@ pub fn process_hold_actions(
                 .map(|a| &deck[a.card_idx])
                 .collect::<Vec<_>>();
             let value = hand_value(&cards);
+            //@todo: I dont know if I need to check if the hand is blackJack or Bust or anything
+            //here.
 
             (*hand, dealer_id, State::Holding(value))
         })
@@ -304,8 +319,8 @@ pub fn process_hold_actions(
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
-    Won,
-    Lost,
+    Won(u8),
+    Lost(u8),
 }
 
 pub type HandOutcome = (Uuid, Outcome);
@@ -316,24 +331,43 @@ pub fn resolve_outcomes(hand_values: &[HandState], outcomes: &[HandOutcome]) -> 
     hand_values
         .iter()
         // Check if this particular hand already exists within the outcomes list
-        .filter(|h| outcomes.iter().any(|o| o.0 == h.0))
+        .filter(|h| !outcomes.iter().any(|o| o.0 == h.0))
         // Grab the dealer value and if it exist return (hand, dealer) pair,
         // filter out this hand if the dealer state does not exist.
         .filter_map(|h| hand_values.iter().find(|hv| hv.0 == h.1).map(|d| (h, d)))
         // And finally lets determine the outcome.
         .map(|(h, d)| {
-            let state = if h.1 > d.1 {
-                Outcome::Won
-            } else {
-                Outcome::Lost
+            let state = match d.2 {
+                State::BlackJack => Outcome::Lost(0),
+                State::Bust(_) => Outcome::Won(22),
+                State::Holding(dealer_value) => {
+                    match h.2 {
+                        State::BlackJack => Outcome::Won(21),
+                        State::Bust(v) => Outcome::Lost(v),
+                        State::Holding(v) => {
+                            if v > dealer_value {
+                                Outcome::Won(v)
+                            } else {
+                                Outcome::Lost(v)
+                            }
+                        }
+                        _ => {
+                            unreachable!("Have reached State::Active for a hand while resolving hand outcomes")
+                        }
+                    }
+                },
+               _ => unreachable!("The dealer's hand is still active while attempting to resolve the hand outcomes") 
             };
             (h.0, state)
         })
         .collect::<_>()
 }
 
-pub fn is_game_complete(dealer: Uuid, hands: &[Hand], outcomes: &[HandOutcome]) -> bool {
-    unimplemented!("for a given hand, a game is complete when all of the hands associated with the same dealer have an Outcome")
+pub fn is_game_complete(dealer: Uuid, hands: &[Hand], hand_states: &[HandState]) -> bool {
+    // A game is complete if all of the hands associated with it have HandState's.
+    let hand_count = hands.iter().filter(|h| dealer == h.dealer).count();
+    let state_count = hand_states.iter().filter(|hs| dealer == hs.1).count();
+    hand_count == state_count
 }
 
 // @todo:  I guess we need to keep this "clone" but I dont like it.
