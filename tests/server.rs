@@ -5,22 +5,66 @@ use blackjack::{Action, DataSource};
 
 //@todo:
 //  Figure out logging, when where why how
-//  Double deal on the first round.  Each player should receive 2 cards
 //  Game should end if all the players go bust or blackjack before the dealer draws
 //  Game should end and all active players should win if the dealer busts
+
+fn create_loaded_deck() -> blackjack::Deck {
+    //@note: For now just going to create a deck with all of the face cards
+    //  removed
+    vec![
+        (blackjack::Suit::Hearts, blackjack::Value::Value(9)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(8)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(7)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(6)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(5)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(4)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(3)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(2)),
+        (blackjack::Suit::Hearts, blackjack::Value::Value(1)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(9)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(8)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(7)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(6)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(5)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(4)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(3)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(2)),
+        (blackjack::Suit::Diamonds, blackjack::Value::Value(1)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(9)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(8)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(7)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(6)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(5)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(4)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(3)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(2)),
+        (blackjack::Suit::Spades, blackjack::Value::Value(1)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(9)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(8)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(7)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(6)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(5)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(4)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(3)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(2)),
+        (blackjack::Suit::Clubs, blackjack::Value::Value(1)),
+    ]
+}
 
 // import our lib and setup a game
 #[test]
 fn can_play_a_simple_game() {
     let mut ds = DataSource::default();
     let game_id = blackjack::add_game(&mut ds);
-    //@todo: swap in a loaded deck
+    blackjack::set_deck(&mut ds, game_id, create_loaded_deck());
     let hand_id = blackjack::add_player(&mut ds, game_id);
 
     // Need to determine the turn sequence somehow.
     let turn_order = vec![hand_id, game_id];
     let mut current_hand_idx: usize = 0;
     const PLAYER_COUNT: usize = 2;
+
+    blackjack::start_game(&mut ds, game_id);
 
     // Building out a single "round", where a round involves reacting to a
     // collection of hand actions and then detrrmining the results for each

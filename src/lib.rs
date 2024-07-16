@@ -192,6 +192,13 @@ pub fn add_game(ds: &mut DataSource) -> Uuid {
     dealer_id
 }
 
+//@todo: This needs to return something I guess to indicate success or failure.
+pub fn set_deck(ds: &mut DataSource, game_id: Uuid, deck: Deck) {
+    ds.decks
+        .entry(game_id)
+        .and_modify(|current| *current = deck);
+}
+
 //@todo: this is a little awkward.  We should potentially have a second function to
 // create a hand which returns the hand_id else how does the client know how to add
 // an action?
@@ -215,6 +222,55 @@ pub fn add_action(ds: &mut DataSource, hand_id: Uuid, action: Action) {
         Action::Hold => println!("Adding Hold Action"),
     };
     ds.actions.push((hand_id, action));
+}
+
+pub fn allocate_cards(
+    hands: &[Hand],
+    allocations: &[CardAllocation],
+    game_id: Uuid,
+) -> Vec<CardAllocation> {
+    // Find the current card index into the deck
+    let card_idx = allocations.iter().filter(|a| a.dealer == game_id).count();
+
+    // Every hard in the game gets allocated a card
+    hands
+        .iter()
+        .filter(|hand| hand.dealer == game_id)
+        .enumerate()
+        .map(|(idx, hand)| {
+            println!("Adding card allocation: {},{}", hand.id, card_idx);
+            CardAllocation {
+                card_idx: card_idx + idx,
+                dealer: game_id,
+                hand: hand.id,
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+pub fn start_game(ds: &mut DataSource, game_id: Uuid) {
+    // Every hand gets 2 card
+    let mut allocations = Vec::new();
+    allocations.extend(allocate_cards(&ds.hands, &ds.allocations, game_id));
+    allocations.extend(allocate_cards(&ds.hands, &ds.allocations, game_id));
+
+    // Grab the list of the hands that have been updated (this should be all the hands in
+    // this game)
+    let updated_hands = allocations
+        .iter()
+        .filter_map(|ca| ds.hands.iter().find(|&h| h.id == ca.hand))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // Combine the allocations into the master allocation list
+    ds.allocations.extend(allocations);
+
+    // We now need to check the hand states incase anything interesting has
+    // resolved from that.
+    let resulting_states = process_hand_states(&updated_hands, &ds.allocations, &ds.decks);
+
+    // Merge any hand_states into the master state list
+    ds.hand_states.extend(resulting_states);
 }
 
 pub enum ActionResolutionError {
