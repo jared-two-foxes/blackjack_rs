@@ -2,6 +2,8 @@
 // Integration tests for our blackjack server
 //
 use blackjack::{Action, DataSource};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 //@todo:
 //  Figure out logging, when where why how
@@ -55,16 +57,17 @@ fn create_loaded_deck() -> blackjack::Deck {
 #[test]
 fn can_play_a_simple_game() {
     let mut ds = DataSource::default();
-    let game_id = blackjack::add_game(&mut ds);
-    blackjack::set_deck(&mut ds, game_id, create_loaded_deck());
-    let hand_id = blackjack::add_player(&mut ds, game_id);
+    let game_id = ds.add_game();
+    ds.set_deck(game_id, create_loaded_deck());
+    let hand_id = ds.add_player(game_id);
 
     // Need to determine the turn sequence somehow.
+    // @todo: Turn order needs to get migrated into the DataSource as we need to have one of these
+    // per game.
     let turn_order = vec![hand_id, game_id];
     let mut current_hand_idx: usize = 0;
-    const PLAYER_COUNT: usize = 2;
 
-    blackjack::start_game(&mut ds, game_id);
+    ds.start_game(game_id);
 
     // Building out a single "round", where a round involves reacting to a
     // collection of hand actions and then detrrmining the results for each
@@ -74,81 +77,27 @@ fn can_play_a_simple_game() {
         let hand_value =
             blackjack::get_hand_value(current_hand, &ds.hands, &ds.allocations, &ds.decks);
 
-        println!("processing for hand: {} ({})", current_hand_idx, hand_value);
+        //println!("processing for hand: {} ({})", current_hand_idx, hand_value);
 
         if current_hand == hand_id {
-            blackjack::add_action(&mut ds, hand_id, Action::Hit);
+            ds.add_action(hand_id, Action::Hit);
         } else {
             // This is the dealers turn.
             if hand_value > 17 {
-                blackjack::add_action(&mut ds, current_hand, Action::Hold);
+                ds.add_action(current_hand, Action::Hold);
             } else {
-                blackjack::add_action(&mut ds, current_hand, Action::Hit);
+                ds.add_action(current_hand, Action::Hit);
             }
         }
 
-        // Step 1: Allocate new cards from hit actions
-        {
-            let allocations =
-                blackjack::process_hit_actions(&ds.actions, &ds.hands, &ds.allocations);
+        // Process the hand actions
+        ds.process_hit_actions();
+        ds.process_hold_actions();
 
-            // Check for updates to the hand states.
-            //
-            // @note:
-            //  We really only want to do this to any hands that have changed due to
-            //  an addition to the card states.  We dont want to be doing this for all
-            //  hands.
-            //
-            let updated_hands = allocations
-                .iter()
-                .filter_map(|ca| ds.hands.iter().find(|&h| h.id == ca.hand))
-                .cloned()
-                .collect::<Vec<_>>();
+        // Get the next hands to act
+        current_hand_idx = ds.get_next_hand(current_hand_idx, &turn_order);
 
-            // Merge allocations into the master list.
-            ds.allocations.extend(allocations);
-
-            // Check if any of the new hands have busted or hit blackjack.
-            let resulting_states =
-                blackjack::process_hand_states(&updated_hands, &ds.allocations, &ds.decks);
-            //todo!("need to add a step here to iterate hand states to check for children that need to be added");
-
-            // Merge into the master state list
-            ds.hand_states.extend(resulting_states);
-        }
-
-        // Step 2: Process all the hold actions.
-        {
-            let hold_states =
-                blackjack::process_hold_actions(&ds.hands, &ds.actions, &ds.allocations, &ds.decks);
-
-            // Merge these into the master state list
-            ds.hand_states.extend(hold_states);
-        }
-
-        // Step 3: Pick next hand to act.
-        {
-            let mut next_hand_idx = current_hand_idx;
-            current_hand_idx = loop {
-                next_hand_idx = (next_hand_idx + 1) % PLAYER_COUNT; // Because there are 2 players
-                println!("Checking active state of {}", next_hand_idx);
-                let hand_id = turn_order[next_hand_idx];
-                let is_hand_active = blackjack::is_hand_active(hand_id, &ds.hand_states);
-                if is_hand_active {
-                    println!("Returning {}", next_hand_idx);
-                    break next_hand_idx;
-                }
-                if next_hand_idx == current_hand_idx {
-                    //@note:
-                    //  We've looped all the hands, none were active which indicates that
-                    //  the game is over.
-                    println!("We've iterated all the hands, returning {}", next_hand_idx);
-                    break next_hand_idx;
-                }
-            };
-        }
-
-        println!(); //< Add blankline to seperate iterations
+        //println!(); //< Add blankline to seperate iterations
         ds.actions.clear();
     }
 

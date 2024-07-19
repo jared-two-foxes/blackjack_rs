@@ -176,52 +176,131 @@ pub struct DataSource {
     pub outcomes: Vec<HandOutcome>,
 }
 
+const PLAYER_COUNT: usize = 2;
+
 //@thoughts: Should something that takes a mut ref be part of the impl block of
 //           that object?  For example should the add_player & add_action
 //           methods bellow be member functions as they directly manipulate
 //           the DataSource?
+impl DataSource {
+    pub fn add_game(&mut self) -> Uuid {
+        let dealer_id = Uuid::new_v4();
+        self.decks.insert(dealer_id, new_deck());
+        self.hands.push(Hand {
+            id: dealer_id,
+            player: dealer_id,
+            dealer: dealer_id,
+        });
+        dealer_id
+    }
 
-pub fn add_game(ds: &mut DataSource) -> Uuid {
-    let dealer_id = Uuid::new_v4();
-    ds.decks.insert(dealer_id, new_deck());
-    ds.hands.push(Hand {
-        id: dealer_id,
-        player: dealer_id,
-        dealer: dealer_id,
-    });
-    dealer_id
-}
+    //@todo: This needs to return something I guess to indicate success or failure.
+    pub fn set_deck(&mut self, game_id: Uuid, deck: Deck) {
+        self.decks
+            .entry(game_id)
+            .and_modify(|current| *current = deck);
+    }
 
-//@todo: This needs to return something I guess to indicate success or failure.
-pub fn set_deck(ds: &mut DataSource, game_id: Uuid, deck: Deck) {
-    ds.decks
-        .entry(game_id)
-        .and_modify(|current| *current = deck);
-}
+    //@todo: this is a little awkward.  We should potentially have a second function to
+    // create a hand which returns the hand_id else how does the client know how to add
+    // an action?
+    pub fn add_player(&mut self, dealer_id: Uuid) -> Uuid {
+        let player_id = Uuid::new_v4();
+        self.hands.push(Hand {
+            id: player_id,
+            player: player_id,
+            dealer: dealer_id,
+        });
 
-//@todo: this is a little awkward.  We should potentially have a second function to
-// create a hand which returns the hand_id else how does the client know how to add
-// an action?
-pub fn add_player(ds: &mut DataSource, dealer_id: Uuid) -> Uuid {
-    let player_id = Uuid::new_v4();
-    ds.hands.push(Hand {
-        id: player_id,
-        player: player_id,
-        dealer: dealer_id,
-    });
+        player_id
+    }
 
-    player_id
-}
+    //@todo: I think this should this return a uuid; reasons 2 fold, we probably
+    //       should have a means to identify the action, and we dont want methods
+    //       with no return type.
+    pub fn add_action(&mut self, hand_id: Uuid, action: Action) {
+        match action {
+            Action::Hit => println!("Adding Hit Action"),
+            Action::Hold => println!("Adding Hold Action"),
+        };
+        self.actions.push((hand_id, action));
+    }
 
-//@todo: I think this should this return a uuid; reasons 2 fold, we probably
-//       should have a means to identify the action, and we dont want methods
-//       with no return type.
-pub fn add_action(ds: &mut DataSource, hand_id: Uuid, action: Action) {
-    match action {
-        Action::Hit => println!("Adding Hit Action"),
-        Action::Hold => println!("Adding Hold Action"),
-    };
-    ds.actions.push((hand_id, action));
+    pub fn start_game(&mut self, game_id: Uuid) {
+        // Every hand gets 2 card
+        let mut allocations = Vec::new();
+        allocations.extend(allocate_cards(&self.hands, &self.allocations, game_id));
+        allocations.extend(allocate_cards(&self.hands, &self.allocations, game_id));
+
+        // Grab the list of the hands that have been updated (this should be all the hands in
+        // this game)
+        let updated_hands = allocations
+            .iter()
+            .filter_map(|ca| self.hands.iter().find(|&h| h.id == ca.hand))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        // Combine the allocations into the master allocation list
+        self.allocations.extend(allocations);
+
+        // We now need to check the hand states incase anything interesting has
+        // resolved from that.
+        let resulting_states = process_hand_states(&updated_hands, &self.allocations, &self.decks);
+
+        // Merge any hand_states into the master state list
+        self.hand_states.extend(resulting_states);
+    }
+
+    pub fn process_hit_actions(&mut self) {
+        let allocations = process_hit_actions(&self.actions, &self.hands, &self.allocations);
+
+        // Check for updates to the hand states.
+        let updated_hands = allocations
+            .iter()
+            .filter_map(|ca| self.hands.iter().find(|&h| h.id == ca.hand))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        // Merge allocations into the master list.
+        self.allocations.extend(allocations);
+
+        // Check if any of the new hands have busted or hit blackjack.
+        let resulting_states = process_hand_states(&updated_hands, &self.allocations, &self.decks);
+        //todo!("need to add a step here to iterate hand states to check for children that need to be added");
+
+        // Merge into the master state list
+        self.hand_states.extend(resulting_states);
+    }
+
+    pub fn process_hold_actions(&mut self) {
+        let hold_states =
+            process_hold_actions(&self.hands, &self.actions, &self.allocations, &self.decks);
+
+        // Merge these into the master state list
+        self.hand_states.extend(hold_states);
+    }
+
+    pub fn get_next_hand(&self, mut current_hand_idx: usize, turn_order: &[Uuid]) -> usize {
+        let mut next_hand_idx = current_hand_idx;
+        current_hand_idx = loop {
+            next_hand_idx = (next_hand_idx + 1) % PLAYER_COUNT; // Because there are 2 players
+            println!("Checking active state of {}", next_hand_idx);
+            let hand_id = turn_order[next_hand_idx];
+            let is_hand_active = is_hand_active(hand_id, &self.hand_states);
+            if is_hand_active {
+                println!("Returning {}", next_hand_idx);
+                break next_hand_idx;
+            }
+            if next_hand_idx == current_hand_idx {
+                //@note:
+                //  We've looped all the hands, none were active which indicates that
+                //  the game is over.
+                println!("We've iterated all the hands, returning {}", next_hand_idx);
+                break next_hand_idx;
+            }
+        };
+        current_hand_idx
+    }
 }
 
 pub fn allocate_cards(
@@ -246,31 +325,6 @@ pub fn allocate_cards(
             }
         })
         .collect::<Vec<_>>()
-}
-
-pub fn start_game(ds: &mut DataSource, game_id: Uuid) {
-    // Every hand gets 2 card
-    let mut allocations = Vec::new();
-    allocations.extend(allocate_cards(&ds.hands, &ds.allocations, game_id));
-    allocations.extend(allocate_cards(&ds.hands, &ds.allocations, game_id));
-
-    // Grab the list of the hands that have been updated (this should be all the hands in
-    // this game)
-    let updated_hands = allocations
-        .iter()
-        .filter_map(|ca| ds.hands.iter().find(|&h| h.id == ca.hand))
-        .cloned()
-        .collect::<Vec<_>>();
-
-    // Combine the allocations into the master allocation list
-    ds.allocations.extend(allocations);
-
-    // We now need to check the hand states incase anything interesting has
-    // resolved from that.
-    let resulting_states = process_hand_states(&updated_hands, &ds.allocations, &ds.decks);
-
-    // Merge any hand_states into the master state list
-    ds.hand_states.extend(resulting_states);
 }
 
 pub enum ActionResolutionError {
