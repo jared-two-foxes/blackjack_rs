@@ -6,7 +6,7 @@ use blackjack::types::*;
 
 use std::thread;
 //use timer::Timer;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 //@todo:
@@ -57,28 +57,39 @@ fn create_loaded_deck() -> blackjack::Deck {
     ]
 }
 
+//@todo: Now we need to define a unified repsonse message.
+enum Resource {
+    Game,
+    Player,
+    HandAction,
+}
+
+enum Response {
+    StatusOk,
+    AddResource(Resource, Uuid),
+    Hand(Uuid),
+    HandValue(u8),
+    HandOutcome(Option<blackjack::Outcome>),
+}
+
 #[derive(Debug)]
 enum Message {
     //@todo: Consolidate these into like an AddResource or something?
-    AddGame(oneshot::Sender<Uuid>),
-    AddPlayer(Uuid /*game_id*/, oneshot::Sender<Uuid>),
+    CreateGame(mpsc::Sender<Response>),
+    AddPlayer(Uuid /*game_id*/, mpsc::Sender<Response>),
     AddHandAction(
         Uuid, /*hand_id*/
         blackjack::Action,
-        oneshot::Sender<Uuid>,
+        mpsc::Sender<Response>,
     ),
-    StartGame(Uuid /*game_id*/),
-    IsGameComplete(Uuid /*game_id*/, oneshot::Sender<bool>),
-    IsCurrentHand(Uuid /*hand_id*/, oneshot::Sender<bool>),
-    GetHandValue(Uuid /*hand_id*/, oneshot::Sender<u8>),
-    GetHandOutcome(
-        Uuid, /*hand_id*/
-        oneshot::Sender<Option<blackjack::Outcome>>,
-    ),
+    StartGame(Uuid /*game_id*/, mpsc::Sender<Response>),
+    GetCurrentHand(Uuid /*game_id*/, mpsc::Sender<Response>),
+    GetHandValue(Uuid /*hand_id*/, mpsc::Sender<Response>),
+    GetHandOutcome(Uuid /*hand_id*/, mpsc::Sender<Response>),
     //Update,
 }
 
-fn process(_tx: mpsc::Sender<Message>, mut rx: mpsc::Receiver<Message>) {
+async fn process(_tx: mpsc::Sender<Message>, mut rx: mpsc::Receiver<Message>) {
     let mut ds = DataSource::default();
 
     /*
@@ -93,39 +104,55 @@ fn process(_tx: mpsc::Sender<Message>, mut rx: mpsc::Receiver<Message>) {
     loop {
         if let Ok(m) = rx.try_recv() {
             match m {
-                Message::AddGame(responder_tx) => {
+                Message::CreateGame(responder_tx) => {
+                    //@todo: add_game should probably take the deck to use.
                     let game_id = ds.add_game();
-                    responder_tx.send(game_id).unwrap();
+                    ds.set_deck(game_id, create_loaded_deck());
+                    responder_tx
+                        .send(Response::AddResource(Resource::Game, game_id))
+                        .await
+                        .unwrap()
                 }
                 Message::AddPlayer(game_id, responder_tx) => {
                     let player_id = ds.add_player(game_id);
-                    responder_tx.send(player_id).unwrap();
+                    responder_tx
+                        .send(Response::AddResource(Resource::Player, player_id))
+                        .await
+                        .unwrap();
                 }
                 Message::AddHandAction(hand_id, action, responder_tx) => {
                     ds.add_action(hand_id, action);
                     let new_uuid = Uuid::new_v4();
-                    responder_tx.send(new_uuid).unwrap();
+                    responder_tx
+                        .send(Response::AddResource(Resource::HandAction, new_uuid))
+                        .await
+                        .unwrap();
                 }
-                Message::StartGame(game_id) => {
+                Message::StartGame(game_id, responder_tx) => {
                     ds.start_game(game_id);
+                    responder_tx.send(Response::StatusOk).await.unwrap();
                 }
-                Message::IsGameComplete(game_id, responder_tx) => {
-                    let is_game_complete =
-                        blackjack::is_game_complete(game_id, &ds.hands, &ds.hand_states);
-                    responder_tx.send(is_game_complete).unwrap();
-                }
-                Message::IsCurrentHand(hand_id, responder_tx) => {
-                    let is_current_hand = false;
-                    responder_tx.send(is_current_hand).unwrap();
+                Message::GetCurrentHand(_game_id, responder_tx) => {
+                    //@todo: Pull the actual current hand for the passed game.
+                    responder_tx
+                        .send(Response::Hand(Uuid::nil()))
+                        .await
+                        .unwrap();
                 }
                 Message::GetHandValue(hand_id, responder_tx) => {
                     let hand_value =
                         blackjack::get_hand_value(hand_id, &ds.hands, &ds.allocations, &ds.decks);
-                    responder_tx.send(hand_value).unwrap();
+                    responder_tx
+                        .send(Response::HandValue(hand_value))
+                        .await
+                        .unwrap();
                 }
                 Message::GetHandOutcome(hand_id, responder_tx) => {
                     let hand_outcome = blackjack::get_hand_outcome(hand_id, &ds.outcomes);
-                    responder_tx.send(hand_outcome).unwrap()
+                    responder_tx
+                        .send(Response::HandOutcome(hand_outcome))
+                        .await
+                        .unwrap()
                 }
             }
         } else {
@@ -137,60 +164,63 @@ fn process(_tx: mpsc::Sender<Message>, mut rx: mpsc::Receiver<Message>) {
     }
 }
 
-async fn create_game(tx: &mpsc::Sender<Message>) -> Uuid {
-    let (resp_tx, resp_rx) = oneshot::channel();
-    tx.send(Message::AddGame(resp_tx)).await.unwrap();
-    resp_rx.await.unwrap()
+async fn create_game(tx: &mpsc::Sender<Message>, resp_tx: mpsc::Sender<Response>) {
+    tx.send(Message::CreateGame(resp_tx)).await.unwrap();
 }
 
-async fn add_player(tx: &mpsc::Sender<Message>, game_id: Uuid) -> Uuid {
-    let (resp_tx, resp_rx) = oneshot::channel();
+async fn add_player(tx: &mpsc::Sender<Message>, game_id: Uuid, resp_tx: mpsc::Sender<Response>) {
     tx.send(Message::AddPlayer(game_id, resp_tx)).await.unwrap();
-    resp_rx.await.unwrap()
 }
 
-async fn is_game_complete(tx: &mpsc::Sender<Message>, game_id: Uuid) -> bool {
-    let (resp_tx, resp_rx) = oneshot::channel();
-    tx.send(Message::IsGameComplete(game_id, resp_tx))
+async fn get_hand_outcome(
+    tx: &mpsc::Sender<Message>,
+    hand_id: Uuid,
+    resp_tx: mpsc::Sender<Response>,
+) {
+    tx.send(Message::GetHandOutcome(hand_id, resp_tx))
         .await
         .unwrap();
-    resp_rx.await.unwrap()
 }
 
-async fn is_current_hand(tx: &mpsc::Sender<Message>, hand_id: Uuid) -> bool {
-    let (resp_tx, resp_rx) = oneshot::channel();
-    tx.send(Message::IsCurrentHand(hand_id, resp_tx))
+async fn get_current_hand(
+    tx: &mpsc::Sender<Message>,
+    hand_id: Uuid,
+    resp_tx: mpsc::Sender<Response>,
+) {
+    tx.send(Message::GetCurrentHand(hand_id, resp_tx))
         .await
         .unwrap();
-    resp_rx.await.unwrap()
 }
 
-async fn get_hand_value(tx: &mpsc::Sender<Message>, hand_id: Uuid) -> u8 {
-    let (resp_tx, resp_rx) = oneshot::channel();
+async fn get_hand_value(
+    tx: &mpsc::Sender<Message>,
+    hand_id: Uuid,
+    resp_tx: mpsc::Sender<Response>,
+) {
     tx.send(Message::GetHandValue(hand_id, resp_tx))
         .await
         .unwrap();
-    resp_rx.await.unwrap()
 }
 
 async fn add_hand_action(
     tx: &mpsc::Sender<Message>,
     hand_id: Uuid,
     action: blackjack::Action,
-) -> Uuid {
-    let (resp_tx, resp_rx) = oneshot::channel();
+    resp_tx: mpsc::Sender<Response>,
+) {
     tx.send(Message::AddHandAction(hand_id, action, resp_tx))
         .await
         .unwrap();
-    resp_rx.await.unwrap()
 }
 
-async fn get_hand_outcome(tx: &mpsc::Sender<Message>, hand_id: Uuid) -> Option<blackjack::Outcome> {
-    let (resp_tx, resp_rx) = oneshot::channel();
-    tx.send(Message::GetHandOutcome(hand_id, resp_tx))
-        .await
-        .unwrap();
-    resp_rx.await.unwrap()
+enum TestState {
+    CreateGame,
+    CreatePlayer,
+    Update, //< Loop start
+    GetHandOutcome,
+    GetCurrentHand,
+    GetHandValue,
+    AddAction,
 }
 
 // import our lib and setup a game
@@ -201,35 +231,83 @@ async fn can_play_a_simple_game() {
     let client_tx = tx.clone();
     let _handle = thread::spawn(move || process(tx, rx));
 
-    // Create the game
-    let game_id = create_game(&client_tx).await;
+    let (tx2, mut rx2) = mpsc::channel(32);
 
-    // ds.set_deck(game_id, create_loaded_deck());
+    // Data required for test.
+    let mut game_id = Uuid::nil();
+    let mut hand_id = Uuid::nil();
+    let mut current_hand_id = Uuid::nil();
+    let mut hand_value = 0u8;
+    let mut hand_outcome: Option<blackjack::Outcome>;
 
-    // Create a player and sit him at the table.
-    let hand_id = add_player(&client_tx, game_id).await;
+    create_game(&client_tx, tx2.clone()).await;
+    let mut state = TestState::CreateGame;
 
-    // Start the game simulation
-    client_tx.send(Message::StartGame(game_id)).await.unwrap();
+    loop {
+        if let Ok(response) = rx2.try_recv() {
+            //@todo: let this match return a (message, new_state) pair and then we can relocate the
+            //  await from the following functions here.
+            match state {
+                TestState::CreateGame => {
+                    if let Response::AddResource(_, uid) = response {
+                        game_id = uid;
+                    }
+                    add_player(&client_tx, game_id, tx2.clone()).await;
+                    state = TestState::CreatePlayer;
+                }
+                TestState::CreatePlayer => {
+                    if let Response::AddResource(_, uid) = response {
+                        hand_id = uid;
+                    }
+                    client_tx
+                        .send(Message::StartGame(game_id, tx2.clone()))
+                        .await
+                        .unwrap();
+                    state = TestState::Update;
+                }
+                TestState::Update => {
+                    get_hand_outcome(&client_tx, game_id, tx2.clone()).await;
+                    state = TestState::GetHandOutcome;
+                }
+                TestState::GetHandOutcome => {
+                    if let Response::HandOutcome(outcome) = response {
+                        hand_outcome = outcome;
+                        if hand_outcome.is_some() {
+                            break;
+                        }
+                    }
+                    get_current_hand(&client_tx, hand_id, tx2.clone()).await;
+                    state = TestState::GetCurrentHand;
+                }
+                TestState::GetCurrentHand => {
+                    if let Response::Hand(uid) = response {
+                        current_hand_id = uid;
+                    }
+                    get_hand_value(&client_tx, hand_id, tx2.clone()).await;
+                    state = TestState::GetHandValue;
+                }
+                TestState::GetHandValue => {
+                    if let Response::HandValue(value) = response {
+                        hand_value = value;
+                    }
 
-    // loop while the game is active and post the players actions.
-    // @todo: extract the dealers actions from here, they shouldnt be here.
-    while !is_game_complete(&client_tx, game_id).await {
-        if is_current_hand(&client_tx, hand_id).await {
-            add_hand_action(&client_tx, hand_id, Action::Hit).await;
-        } else {
-            // This is the dealers turn.
-            let hand_value = get_hand_value(&client_tx, hand_id).await;
-            if hand_value > 17 {
-                add_hand_action(&client_tx, hand_id, Action::Hold).await;
-            } else {
-                add_hand_action(&client_tx, hand_id, Action::Hit).await;
+                    // @todo: extract the dealers actions from here, they shouldnt be here.
+                    if current_hand_id == hand_id {
+                        add_hand_action(&client_tx, hand_id, Action::Hit, tx2.clone()).await;
+                        state = TestState::AddAction;
+                    } else if hand_value > 17 {
+                        add_hand_action(&client_tx, hand_id, Action::Hold, tx2.clone()).await;
+                    } else {
+                        add_hand_action(&client_tx, hand_id, Action::Hit, tx2.clone()).await;
+                    }
+                }
+                TestState::AddAction => {
+                    // And loop back to the start
+                    state = TestState::Update;
+                }
             }
         }
     }
 
-    assert_eq!(
-        Some(blackjack::Outcome::Won(21)),
-        get_hand_outcome(&client_tx, hand_id).await
-    );
+    assert_eq!(Some(blackjack::Outcome::Won(21)), hand_outcome);
 }
