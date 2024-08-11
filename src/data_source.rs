@@ -13,7 +13,7 @@ pub struct DataSource {
     pub actions: Vec<HandAction>,
     pub outcomes: Vec<HandOutcome>,
     sequence: Vec<Sequence>,
-    active_hands: Vec<Uuid>,
+    pub active_hands: Vec<Uuid>,
 }
 
 impl DataSource {
@@ -37,7 +37,7 @@ impl DataSource {
 
     //@todo: this is a little awkward.  We should potentially have a second function to
     // create a hand which returns the hand_id else how does the client know how to add
-    // an action?
+    // an action?  Yes this for sure.  id & player should be different id's
     pub fn add_player(&mut self, dealer_id: Uuid) -> Uuid {
         let player_id = Uuid::new_v4();
         self.hands.push(Hand {
@@ -55,8 +55,8 @@ impl DataSource {
 
     pub fn add_action(&mut self, hand_id: Uuid, action: Action) {
         match action {
-            Action::Hit => println!("Adding Hit Action"),
-            Action::Hold => println!("Adding Hold Action"),
+            Action::Hit => println!("Adding Hit Action for {}", hand_id),
+            Action::Hold => println!("Adding Hold Action for {}", hand_id),
         };
         self.actions.push((hand_id, action));
     }
@@ -84,10 +84,47 @@ impl DataSource {
 
         // Merge any hand_states into the master state list
         self.hand_states.extend(resulting_states);
+
+        // Determine turn order, currently just extracts all of the hands associated with a dealer.
+        let mut sequence = self
+            .hands
+            .iter()
+            .filter(|h| h.dealer == game_id)
+            .map(|h| Sequence {
+                game_id,
+                hand_id: h.id,
+            })
+            .collect::<Vec<_>>();
+
+        //@todo: Sort so that the dealer is last in this list.
+        sequence.sort_unstable_by(|a, b| {
+            let a_is_dealer = a.game_id == a.hand_id;
+            let b_is_dealer = b.game_id == b.hand_id;
+            if a_is_dealer {
+                std::cmp::Ordering::Greater
+            } else if b_is_dealer {
+                std::cmp::Ordering::Less
+            } else {
+                a.hand_id.cmp(&b.hand_id)
+            }
+        });
+
+        // And push the first starting hand
+        match sequence.first() {
+            Some(s) => {
+                //assert!(!is_dealer(get_hand(s.hand_id)));
+                self.active_hands.push(s.hand_id)
+            }
+            _ => println!("This should be an error, the sequence vec is empty"),
+        };
+
+        // Finally push teh sequence onto the master list.
+        self.sequence.extend(sequence);
     }
 
     pub fn process_hit_actions(&mut self) {
         let allocations = process_hit_actions(&self.actions, &self.hands, &self.allocations);
+        //println!("mapped hit actions to CardAllocations");
 
         // Check for updates to the hand states.
         let updated_hands = allocations
@@ -95,6 +132,7 @@ impl DataSource {
             .filter_map(|ca| self.hands.iter().find(|&h| h.id == ca.hand))
             .cloned()
             .collect::<Vec<_>>();
+        //println!("Mapped new allocations to their hand id's");
 
         // Merge allocations into the master list.
         self.allocations.extend(allocations);
@@ -116,22 +154,26 @@ impl DataSource {
     }
 
     pub fn resolve_turn(&mut self) {
+        println!("resolve outcomes!");
         let new_outcomes = resolve_outcomes(&self.hand_states, &self.outcomes);
         self.outcomes.extend(new_outcomes);
 
+        println!("resolve active hands!");
         self.active_hands = self
             .active_hands
             .iter()
-            .map(|current_hand_id| {
-                get_next_hand(
+            .filter_map(|current_hand_id| {
+                determine_next_hand(
                     *current_hand_id,
                     &self.sequence,
                     &self.hands,
                     &self.hand_states,
                 )
             })
+            .inspect(|id| println!("current_active_hand: {}", id))
             .collect::<Vec<_>>();
 
+        println!("clear actions");
         self.actions.clear();
     }
 }

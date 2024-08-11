@@ -30,6 +30,7 @@ pub struct CardAllocation {
     pub card_idx: usize,
 }
 
+#[derive(Debug)]
 pub struct Sequence {
     pub game_id: Uuid,
     pub hand_id: Uuid,

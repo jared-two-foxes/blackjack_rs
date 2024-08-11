@@ -15,6 +15,14 @@ pub fn get_game(hand_id: Uuid, hands: &[Hand]) -> Uuid {
     get_dealer(hand_id, hands)
 }
 
+pub fn get_active_hand(game_id: Uuid, active_hands: &[Uuid], hands: &[Hand]) -> Option<Uuid> {
+    active_hands
+        .iter()
+        .filter_map(|id| hands.iter().find(|h| h.id == *id))
+        .find(|h| h.dealer == game_id)
+        .map(|h| h.id)
+}
+
 pub fn get_hand_value(
     hand_id: Uuid,
     hands: &[Hand],
@@ -133,7 +141,7 @@ pub fn allocate_cards(
         .filter(|hand| hand.dealer == game_id)
         .enumerate()
         .map(|(idx, hand)| {
-            println!("Adding card allocation: {},{}", hand.id, card_idx);
+            println!("Adding card allocation: {},{}", hand.id, card_idx + idx);
             CardAllocation {
                 card_idx: card_idx + idx,
                 dealer: game_id,
@@ -148,9 +156,6 @@ pub enum ActionResolutionError {
     MissingDeck,
 }
 
-// Currently this function has side-effects, I wonder if there is a reasonable
-// way to indicate this in rust via naming or something?
-//
 //@note: Making the assumpting here that there is not going to be any actions
 //       in this list that are going to end up hitting the same deck and therefore
 //       invalidating the number deck index calculated from the allocations list.
@@ -159,7 +164,7 @@ pub fn process_hit_actions(
     hands: &[Hand],
     allocations: &[CardAllocation],
 ) -> Vec<CardAllocation> {
-    println!("Processing Hit Actions");
+    //println!("Processing Hit Actions");
     actions
         .iter()
         .filter(|(_, action)| matches!(action, Action::Hit))
@@ -169,7 +174,7 @@ pub fn process_hit_actions(
                 .iter()
                 .filter(|a| a.dealer == hand.dealer)
                 .count();
-            println!("Adding card allocation: {}", card_idx);
+            println!("Adding card allocation: {},{}", hand.id, card_idx);
             CardAllocation {
                 card_idx,
                 dealer: hand.dealer,
@@ -298,41 +303,29 @@ pub fn get_hand_outcome(hand_id: Uuid, outcomes: &[HandOutcome]) -> Option<Outco
 
 // @todo: this should really be receiving the game_id rather than the turn_order and
 // current_hand_idx as both of those should be stored in the Source.
-pub fn get_next_hand(
+pub fn determine_next_hand(
     current_hand_id: Uuid,
     turn_order: &[Sequence],
     hands: &[Hand],
     hand_states: &[HandState],
-) -> Uuid {
-    let mut next_hand_id = current_hand_id;
+) -> Option<Uuid> {
     let game_id = get_game(current_hand_id, hands);
-    loop {
-        if let Some(next_sequence) = turn_order
-            .iter()
-            .cycle()
-            .filter(|&s| s.game_id == game_id)
-            .take_while(|&s| s.hand_id != next_hand_id)
-            .next()
-        {
-            next_hand_id = next_sequence.hand_id;
-
-            println!("Checking active state of {}", next_sequence.hand_id);
-            let is_hand_active = is_hand_active(next_hand_id, hand_states);
-            if is_hand_active {
-                println!("Returning {}", next_sequence.hand_id);
-                break next_sequence.hand_id;
-            } else if next_hand_id == current_hand_id {
-                println!("We've iterated all the hands, returning {}", next_hand_id);
-                break next_hand_id;
-            }
-        } else {
-            //@todo
-            //  Ummmm?  What?  This implies that there is nothing in the sequence
-            //  list for this game.  There should be atleast a dealer
-            unreachable!();
-        }
-    }
+    turn_order
+        .iter()
+        .cycle()
+        // We care only for our own game, so filter out the rest
+        .filter(|&s| s.game_id == game_id)
+        // Fast forward to the current hand
+        .skip_while(|&s| s.hand_id != current_hand_id)
+        // Skip this hand, since we're trying to find the next good active hand
+        .skip(1)
+        // Now recreate the list starting from this hand upto the current hand
+        .take_while(|&s| s.hand_id != current_hand_id)
+        // And now iterate from here until we find a hand that is active
+        .find(|&s| is_hand_active(s.hand_id, hand_states))
+        .map(|s| s.hand_id)
 }
+
 // turn sequence; the order in which players take turns (with the dealer going last)
 // action validation; an action is only balid if its that players turn to go.
 // Rules engine?
