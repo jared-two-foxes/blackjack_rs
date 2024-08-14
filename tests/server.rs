@@ -138,7 +138,7 @@ fn process(
                     Response::HandOutcome(hand_outcome)
                 }
             };
-            response_tx.send(response).unwrap()
+            response_tx.send(response).unwrap();
         }
 
         if !ds.actions.is_empty() {
@@ -227,7 +227,7 @@ fn can_play_a_simple_game() {
                     current_hand_id = uid;
                     println!("client: Current Hand={}", current_hand_id);
                     state = TestState::GetHandValue;
-                    Some(Message::GetHandValue(hand_id))
+                    Some(Message::GetHandValue(current_hand_id))
                 } else {
                     None
                 }
@@ -237,12 +237,10 @@ fn can_play_a_simple_game() {
                     println!("client: Hand Value={}", value);
                     hand_value = value;
                     // @todo: extract the dealers actions from here, they shouldnt be here.
-                    let m = if current_hand_id == hand_id {
-                        Message::AddHandAction(hand_id, Action::Hit)
-                    } else if hand_value > 17 {
-                        Message::AddHandAction(hand_id, Action::Hold)
+                    let m = if hand_value > 17 {
+                        Message::AddHandAction(current_hand_id, Action::Hold)
                     } else {
-                        Message::AddHandAction(hand_id, Action::Hit)
+                        Message::AddHandAction(current_hand_id, Action::Hit)
                     };
                     state = TestState::AddAction;
                     Some(m)

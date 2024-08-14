@@ -15,6 +15,10 @@ pub fn get_game(hand_id: Uuid, hands: &[Hand]) -> Uuid {
     get_dealer(hand_id, hands)
 }
 
+pub fn get_hand_count(game_id: Uuid, hands: &[Hand]) -> usize {
+    hands.iter().filter(|&h| h.dealer == game_id).count()
+}
+
 pub fn get_active_hand(game_id: Uuid, active_hands: &[Uuid], hands: &[Hand]) -> Option<Uuid> {
     active_hands
         .iter()
@@ -240,6 +244,7 @@ pub fn process_hold_actions(
                 .map(|a| &deck[a.card_idx])
                 .collect::<Vec<_>>();
             let value = hand_value(&cards);
+
             //@todo: I dont know if I need to check if the hand is blackJack or Bust or anything
             //here.
 
@@ -310,6 +315,7 @@ pub fn determine_next_hand(
     hand_states: &[HandState],
 ) -> Option<Uuid> {
     let game_id = get_game(current_hand_id, hands);
+    //is_hand_active(current_hand_id, hands);
     turn_order
         .iter()
         .cycle()
@@ -319,11 +325,10 @@ pub fn determine_next_hand(
         .skip_while(|&s| s.hand_id != current_hand_id)
         // Skip this hand, since we're trying to find the next good active hand
         .skip(1)
-        // Now recreate the list starting from this hand upto the current hand
-        .take_while(|&s| s.hand_id != current_hand_id)
         // And now iterate from here until we find a hand that is active
-        .find(|&s| is_hand_active(s.hand_id, hand_states))
+        .find(|&s| is_hand_active(s.hand_id, hand_states) || s.hand_id == current_hand_id)
         .map(|s| s.hand_id)
+        .and_then(|uid| is_hand_active(uid, hand_states).then_some(uid))
 }
 
 // turn sequence; the order in which players take turns (with the dealer going last)

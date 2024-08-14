@@ -94,6 +94,7 @@ impl DataSource {
                 game_id,
                 hand_id: h.id,
             })
+            .inspect(|s| println!("Initial Sequence: {:?}", s))
             .collect::<Vec<_>>();
 
         //@todo: Sort so that the dealer is last in this list.
@@ -154,11 +155,9 @@ impl DataSource {
     }
 
     pub fn resolve_turn(&mut self) {
-        println!("resolve outcomes!");
         let new_outcomes = resolve_outcomes(&self.hand_states, &self.outcomes);
         self.outcomes.extend(new_outcomes);
 
-        println!("resolve active hands!");
         self.active_hands = self
             .active_hands
             .iter()
@@ -170,10 +169,9 @@ impl DataSource {
                     &self.hand_states,
                 )
             })
-            .inspect(|id| println!("current_active_hand: {}", id))
+            //.inspect(|id| println!("current_active_hand: {}", id))
             .collect::<Vec<_>>();
 
-        println!("clear actions");
         self.actions.clear();
     }
 }

@@ -43,6 +43,7 @@ pub enum Action {
     Hold,
 }
 
+#[derive(Debug)]
 pub enum State {
     Active, // @todo: When representing hand states in the DataSource this should not be included
     // as it will mess with the game complete calaculation.
