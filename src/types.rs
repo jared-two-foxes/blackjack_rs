@@ -1,5 +1,6 @@
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub enum Suit {
     Hearts,
     Diamonds,
@@ -7,6 +8,7 @@ pub enum Suit {
     Spades,
 }
 
+#[derive(Clone)]
 pub enum Value {
     Ace,
     King,

@@ -1,8 +1,10 @@
 //
 // Integration tests for our blackjack server
 //
-use blackjack::data_source::*;
-use blackjack::types::*;
+use blackjack::{
+    types::{Suit, Value},
+    Action, Message, Response,
+};
 
 use std::sync::mpsc;
 use std::thread;
@@ -17,137 +19,43 @@ fn create_loaded_deck() -> blackjack::Deck {
     //@note: For now just going to create a deck with all of the face cards
     //  removed
     vec![
-        (blackjack::Suit::Hearts, blackjack::Value::Value(9)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(8)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(7)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(6)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(5)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(4)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(3)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(2)),
-        (blackjack::Suit::Hearts, blackjack::Value::Value(1)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(9)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(8)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(7)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(6)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(5)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(4)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(3)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(2)),
-        (blackjack::Suit::Diamonds, blackjack::Value::Value(1)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(9)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(8)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(7)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(6)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(5)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(4)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(3)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(2)),
-        (blackjack::Suit::Spades, blackjack::Value::Value(1)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(9)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(8)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(7)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(6)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(5)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(4)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(3)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(2)),
-        (blackjack::Suit::Clubs, blackjack::Value::Value(1)),
+        (Suit::Hearts, Value::Value(9)),
+        (Suit::Hearts, Value::Value(8)),
+        (Suit::Hearts, Value::Value(7)),
+        (Suit::Hearts, Value::Value(6)),
+        (Suit::Hearts, Value::Value(5)),
+        (Suit::Hearts, Value::Value(4)),
+        (Suit::Hearts, Value::Value(3)),
+        (Suit::Hearts, Value::Value(2)),
+        (Suit::Hearts, Value::Value(1)),
+        (Suit::Diamonds, Value::Value(9)),
+        (Suit::Diamonds, Value::Value(8)),
+        (Suit::Diamonds, Value::Value(7)),
+        (Suit::Diamonds, Value::Value(6)),
+        (Suit::Diamonds, Value::Value(5)),
+        (Suit::Diamonds, Value::Value(4)),
+        (Suit::Diamonds, Value::Value(3)),
+        (Suit::Diamonds, Value::Value(2)),
+        (Suit::Diamonds, Value::Value(1)),
+        (Suit::Spades, Value::Value(9)),
+        (Suit::Spades, Value::Value(8)),
+        (Suit::Spades, Value::Value(7)),
+        (Suit::Spades, Value::Value(6)),
+        (Suit::Spades, Value::Value(5)),
+        (Suit::Spades, Value::Value(4)),
+        (Suit::Spades, Value::Value(3)),
+        (Suit::Spades, Value::Value(2)),
+        (Suit::Spades, Value::Value(1)),
+        (Suit::Clubs, Value::Value(9)),
+        (Suit::Clubs, Value::Value(8)),
+        (Suit::Clubs, Value::Value(7)),
+        (Suit::Clubs, Value::Value(6)),
+        (Suit::Clubs, Value::Value(5)),
+        (Suit::Clubs, Value::Value(4)),
+        (Suit::Clubs, Value::Value(3)),
+        (Suit::Clubs, Value::Value(2)),
+        (Suit::Clubs, Value::Value(1)),
     ]
-}
-
-//@todo: Now we need to define a unified repsonse message.
-enum Resource {
-    Game,
-    Player,
-    HandAction,
-}
-
-enum Response {
-    StatusOk,
-    AddResource(Resource, Uuid),
-    Hand(Uuid),
-    HandValue(u8),
-    HandOutcome(Option<blackjack::Outcome>),
-    Failed,
-}
-
-#[derive(Debug)]
-enum Message {
-    //@todo: Consolidate these into like an AddResource or something?
-    CreateGame,
-    AddPlayer(Uuid /*game_id*/),
-    AddHandAction(Uuid /*hand_id*/, blackjack::Action),
-    StartGame(Uuid /*game_id*/),
-    GetCurrentHand(Uuid /*game_id*/),
-    GetHandValue(Uuid /*hand_id*/),
-    GetHandOutcome(Uuid /*hand_id*/),
-}
-
-fn process(
-    _tx: mpsc::Sender<Message>,
-    rx: mpsc::Receiver<Message>,
-    response_tx: mpsc::Sender<Response>,
-) {
-    let mut ds = DataSource::default();
-
-    loop {
-        if let Ok(m) = rx.try_recv() {
-            let response = match m {
-                Message::CreateGame => {
-                    println!("server: Received Create Game Message");
-                    //@todo: add_game should probably take the deck to use.
-                    let game_id = ds.add_game();
-                    ds.set_deck(game_id, create_loaded_deck());
-                    Response::AddResource(Resource::Game, game_id)
-                }
-                Message::AddPlayer(game_id) => {
-                    println!("server: AddPlayer");
-                    let player_id = ds.add_player(game_id);
-                    Response::AddResource(Resource::Player, player_id)
-                }
-                Message::AddHandAction(hand_id, action) => {
-                    println!("server: AddHandAction");
-                    ds.add_action(hand_id, action);
-                    let new_uuid = Uuid::new_v4();
-                    Response::AddResource(Resource::HandAction, new_uuid)
-                }
-                Message::StartGame(game_id) => {
-                    println!("server: StartGame");
-                    ds.start_game(game_id);
-                    Response::StatusOk
-                }
-                Message::GetCurrentHand(game_id) => {
-                    println!("server: GetCurrentHand");
-                    let hand_id = blackjack::get_active_hand(game_id, &ds.active_hands, &ds.hands);
-                    match hand_id {
-                        Some(uid) => println!("active hand for {}: {}", game_id, uid),
-                        _ => println!("No active hand for given game_id {}", game_id),
-                    };
-                    hand_id.map_or(Response::Failed, Response::Hand)
-                }
-                Message::GetHandValue(hand_id) => {
-                    println!("server: GetHandValue");
-                    let hand_value =
-                        blackjack::get_hand_value(hand_id, &ds.hands, &ds.allocations, &ds.decks);
-                    Response::HandValue(hand_value)
-                }
-                Message::GetHandOutcome(hand_id) => {
-                    println!("server: GetHandOutcome");
-                    let hand_outcome = blackjack::get_hand_outcome(hand_id, &ds.outcomes);
-                    Response::HandOutcome(hand_outcome)
-                }
-            };
-            response_tx.send(response).unwrap();
-        }
-
-        if !ds.actions.is_empty() {
-            // I guess there was no message, if there are any actions we should update them.
-            ds.process_hit_actions();
-            ds.process_hold_actions();
-            ds.resolve_turn();
-        }
-    }
 }
 
 enum TestState {
@@ -167,7 +75,8 @@ fn can_play_a_simple_game() {
     let (tx, rx) = mpsc::channel();
     let (response_tx, response_rx) = mpsc::channel();
     let client_tx = tx.clone();
-    let _handle = thread::spawn(move || process(tx, rx, response_tx));
+    let _handle =
+        thread::spawn(move || blackjack::process(tx, rx, response_tx, create_loaded_deck()));
 
     // Data required for test.
     let mut game_id = Uuid::nil();
