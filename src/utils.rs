@@ -64,8 +64,6 @@ fn hand_value(cards: &[&Card]) -> u8 {
     value
 }
 
-pub type Deck = Vec<Card>;
-
 pub fn new_deck() -> Deck {
     vec![
         (Suit::Hearts, Value::Ace),
@@ -127,6 +125,48 @@ pub fn new_deck() -> Deck {
     ]
 }
 
+pub fn create_loaded_deck() -> Deck {
+    //@note: For now just going to create a deck with all of the face cards
+    //  removed
+    vec![
+        (Suit::Hearts, Value::Value(9)),
+        (Suit::Hearts, Value::Value(8)),
+        (Suit::Hearts, Value::Value(7)),
+        (Suit::Hearts, Value::Value(6)),
+        (Suit::Hearts, Value::Value(5)),
+        (Suit::Hearts, Value::Value(4)),
+        (Suit::Hearts, Value::Value(3)),
+        (Suit::Hearts, Value::Value(2)),
+        (Suit::Hearts, Value::Value(1)),
+        (Suit::Diamonds, Value::Value(9)),
+        (Suit::Diamonds, Value::Value(8)),
+        (Suit::Diamonds, Value::Value(7)),
+        (Suit::Diamonds, Value::Value(6)),
+        (Suit::Diamonds, Value::Value(5)),
+        (Suit::Diamonds, Value::Value(4)),
+        (Suit::Diamonds, Value::Value(3)),
+        (Suit::Diamonds, Value::Value(2)),
+        (Suit::Diamonds, Value::Value(1)),
+        (Suit::Spades, Value::Value(9)),
+        (Suit::Spades, Value::Value(8)),
+        (Suit::Spades, Value::Value(7)),
+        (Suit::Spades, Value::Value(6)),
+        (Suit::Spades, Value::Value(5)),
+        (Suit::Spades, Value::Value(4)),
+        (Suit::Spades, Value::Value(3)),
+        (Suit::Spades, Value::Value(2)),
+        (Suit::Spades, Value::Value(1)),
+        (Suit::Clubs, Value::Value(9)),
+        (Suit::Clubs, Value::Value(8)),
+        (Suit::Clubs, Value::Value(7)),
+        (Suit::Clubs, Value::Value(6)),
+        (Suit::Clubs, Value::Value(5)),
+        (Suit::Clubs, Value::Value(4)),
+        (Suit::Clubs, Value::Value(3)),
+        (Suit::Clubs, Value::Value(2)),
+        (Suit::Clubs, Value::Value(1)),
+    ]
+}
 pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
     hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
 }

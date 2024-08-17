@@ -1,62 +1,13 @@
 //
 // Integration tests for our blackjack server
 //
-use blackjack::{
-    types::{Suit, Value},
-    Action, Message, Response,
-};
-
-use std::sync::mpsc;
-use std::thread;
+use blackjack::{Action, Message, Outcome, Response};
 use uuid::Uuid;
 
 //@todo:
 //  Figure out logging, when where why how
 //  Game should end if all the players go bust or blackjack before the dealer draws
 //  Game should end and all active players should win if the dealer busts
-
-fn create_loaded_deck() -> blackjack::Deck {
-    //@note: For now just going to create a deck with all of the face cards
-    //  removed
-    vec![
-        (Suit::Hearts, Value::Value(9)),
-        (Suit::Hearts, Value::Value(8)),
-        (Suit::Hearts, Value::Value(7)),
-        (Suit::Hearts, Value::Value(6)),
-        (Suit::Hearts, Value::Value(5)),
-        (Suit::Hearts, Value::Value(4)),
-        (Suit::Hearts, Value::Value(3)),
-        (Suit::Hearts, Value::Value(2)),
-        (Suit::Hearts, Value::Value(1)),
-        (Suit::Diamonds, Value::Value(9)),
-        (Suit::Diamonds, Value::Value(8)),
-        (Suit::Diamonds, Value::Value(7)),
-        (Suit::Diamonds, Value::Value(6)),
-        (Suit::Diamonds, Value::Value(5)),
-        (Suit::Diamonds, Value::Value(4)),
-        (Suit::Diamonds, Value::Value(3)),
-        (Suit::Diamonds, Value::Value(2)),
-        (Suit::Diamonds, Value::Value(1)),
-        (Suit::Spades, Value::Value(9)),
-        (Suit::Spades, Value::Value(8)),
-        (Suit::Spades, Value::Value(7)),
-        (Suit::Spades, Value::Value(6)),
-        (Suit::Spades, Value::Value(5)),
-        (Suit::Spades, Value::Value(4)),
-        (Suit::Spades, Value::Value(3)),
-        (Suit::Spades, Value::Value(2)),
-        (Suit::Spades, Value::Value(1)),
-        (Suit::Clubs, Value::Value(9)),
-        (Suit::Clubs, Value::Value(8)),
-        (Suit::Clubs, Value::Value(7)),
-        (Suit::Clubs, Value::Value(6)),
-        (Suit::Clubs, Value::Value(5)),
-        (Suit::Clubs, Value::Value(4)),
-        (Suit::Clubs, Value::Value(3)),
-        (Suit::Clubs, Value::Value(2)),
-        (Suit::Clubs, Value::Value(1)),
-    ]
-}
 
 enum TestState {
     CreateGame,
@@ -71,19 +22,14 @@ enum TestState {
 // import our lib and setup a game
 #[test]
 fn can_play_a_simple_game() {
-    // Setup the Server thread
-    let (tx, rx) = mpsc::channel();
-    let (response_tx, response_rx) = mpsc::channel();
-    let client_tx = tx.clone();
-    let _handle =
-        thread::spawn(move || blackjack::process(tx, rx, response_tx, create_loaded_deck()));
+    let (_, client_tx, response_rx) = blackjack::start_backend();
 
     // Data required for test.
     let mut game_id = Uuid::nil();
     let mut hand_id = Uuid::nil();
     let mut current_hand_id = Uuid::nil();
     let mut hand_value;
-    let mut hand_outcome: Option<blackjack::Outcome>;
+    let mut hand_outcome: Option<Outcome>;
 
     client_tx.send(Message::CreateGame).unwrap();
     let mut state = TestState::CreateGame;
@@ -169,5 +115,5 @@ fn can_play_a_simple_game() {
         }
     }
 
-    assert_eq!(Some(blackjack::Outcome::Won(21)), hand_outcome);
+    assert_eq!(Some(Outcome::Won(21)), hand_outcome);
 }

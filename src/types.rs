@@ -19,6 +19,8 @@ pub enum Value {
 
 pub type Card = (Suit, Value);
 
+pub type Deck = Vec<Card>;
+
 #[derive(Clone)]
 pub struct Hand {
     pub id: Uuid,
