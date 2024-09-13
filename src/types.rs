@@ -41,7 +41,7 @@ pub struct Sequence {
 }
 
 // @todo: I've seen this Hold referenced as "Stand" which I guess makes more sense?
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Action {
     Hit,
     Hold,
