@@ -3,7 +3,7 @@ pub mod data_source;
 pub mod types;
 pub mod utils;
 
-pub use backend::{process, Message, Response};
+pub use backend::{process, Message, Resource, Response};
 pub use types::{Action, Deck, Outcome};
 
 use std::sync::mpsc;

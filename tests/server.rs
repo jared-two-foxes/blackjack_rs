@@ -1,15 +1,14 @@
 //
 // Integration tests for our blackjack server
 //
-use blackjack::{Action, Outcome, Response};
-//use uuid::Uuid;
+use blackjack::{Action, Outcome, Resource, Response};
 
 //@todo:
 //  Figure out logging, when where why how
 //  Game should end if all the players go bust or blackjack before the dealer draws
 //  Game should end and all active players should win if the dealer busts
 
-mod TestFramework {
+mod test_framework {
 
     use blackjack::Message;
     use std::sync::mpsc;
@@ -97,7 +96,7 @@ mod TestFramework {
 // import our lib and setup a game
 #[test]
 fn can_play_a_simple_game() {
-    use TestFramework::{StateController, TestState};
+    use test_framework::{StateController, TestState};
 
     let (_, client_tx, response_rx) = blackjack::start_backend();
 
@@ -105,67 +104,68 @@ fn can_play_a_simple_game() {
     let mut game_id = uuid::Uuid::nil();
     let mut hand_id = uuid::Uuid::nil();
     let mut current_hand_id = uuid::Uuid::nil();
-    let mut hand_outcome: Option<Outcome> = None;
+    let hand_outcome: Option<Outcome>;
 
     let mut fsm = StateController::new(TestState::CreateGame, client_tx);
 
     loop {
         let received = response_rx.try_recv();
         if let Ok(response) = received {
-            // This whole statemachine makes the states dependant on the current client state, can
-            // we simplify this and just remove the need to know the current state?
-            match fsm.current_state {
-                TestState::CreateGame => {
-                    if let Response::AddResource(_, uid) = response {
-                        game_id = uid;
-                        println!("client: game_id={}", game_id);
-                        fsm.set_state(TestState::CreatePlayer(game_id));
-                    }
+            match response {
+                Response::Failed => {
+                    //@note: Well shit something bad happened and I dont know what to do about it!
+                    unimplemented!();
                 }
-                TestState::CreatePlayer(_) => {
-                    if let Response::AddResource(_, uid) = response {
-                        hand_id = uid;
-                        println!("client: hand_id={}", hand_id);
-                        fsm.set_state(TestState::BeginLoop(game_id));
-                    }
-                }
-                TestState::BeginLoop(_) => {
-                    println!("client: Begining Loop");
+                Response::StatusOk => {
+                    // We can get a StatusOk in response to a StartGame message.
                     fsm.set_state(TestState::GetHandOutcome(hand_id));
                 }
-                TestState::GetHandOutcome(_) => {
-                    if let Response::HandOutcome(outcome) = response {
-                        println!("client: Retrieved Hand Outcome");
-                        hand_outcome = outcome;
-                        // If there is some hand outcome then the test is finished, bail
-                        if hand_outcome.is_some() {
-                            println!("client: Found some outcome");
+                Response::AddResource(resource, uid) => {
+                    //@note: this will depend on what state we are in! Either we are attempting
+                    //  to add a new game, or a new player
+                    match resource {
+                        Resource::Game => {
+                            game_id = uid;
+                            println!("client: game_id={}", game_id);
+                            fsm.set_state(TestState::CreatePlayer(game_id));
+                        }
+                        Resource::Player => {
+                            hand_id = uid;
+                            println!("client: hand_id={}", hand_id);
+                            fsm.set_state(TestState::BeginLoop(game_id));
+                        }
+                        Resource::HandAction => {
+                            //@note: So we've sent our action, start the loop again for the next player
+                            fsm.set_state(TestState::GetHandOutcome(hand_id));
+                        }
+                    }
+                }
+                Response::HandOutcome(outcome) => {
+                    // If there is some hand outcome for the test hand then the test is finished
+                    match outcome {
+                        Some(o) => {
+                            hand_outcome = Some(o);
                             break;
                         }
-                        fsm.set_state(TestState::GetCurrentHand(game_id));
+                        None => {
+                            fsm.set_state(TestState::GetCurrentHand(game_id));
+                        }
                     }
                 }
-                TestState::GetCurrentHand(_) => {
-                    if let Response::Hand(uid) = response {
-                        current_hand_id = uid;
-                        println!("client: Current Hand={}", current_hand_id);
-                        fsm.set_state(TestState::GetHandValue(current_hand_id));
+                Response::Hand(uid) => {
+                    current_hand_id = uid;
+                    println!("client: Current Hand={}", current_hand_id);
+                    fsm.set_state(TestState::GetHandValue(current_hand_id));
+                }
+                Response::HandValue(value) => {
+                    println!("client: Hand Value={}", value);
+                    if value > 17 {
+                        fsm.set_state(TestState::AddAction(current_hand_id, Action::Hold));
+                    } else {
+                        fsm.set_state(TestState::AddAction(current_hand_id, Action::Hit));
                     }
                 }
-                TestState::GetHandValue(_) => {
-                    if let Response::HandValue(value) = response {
-                        println!("client: Hand Value={}", value);
-                        if value > 17 {
-                            fsm.set_state(TestState::AddAction(current_hand_id, Action::Hold));
-                        } else {
-                            fsm.set_state(TestState::AddAction(current_hand_id, Action::Hit));
-                        };
-                    }
-                }
-                TestState::AddAction(_, _) => {
-                    fsm.set_state(TestState::BeginLoop(game_id));
-                }
-            };
+            }
         }
     }
 
