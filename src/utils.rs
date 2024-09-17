@@ -1,3 +1,4 @@
+use log::trace;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -40,6 +41,9 @@ pub fn get_hand_value(
         .filter(|a| a.hand == hand_id)
         .map(|a| &deck[a.card_idx])
         .collect::<Vec<_>>();
+
+    trace!("cards in hand: {:?}", cards);
+
     hand_value(&cards)
 }
 
@@ -47,7 +51,7 @@ fn hand_value(cards: &[&Card]) -> u8 {
     let mut ace_count = 0;
     let mut value = cards
         .iter()
-        .map(|c| match c.1 {
+        .map(|c| match c.value {
             Value::Value(v) => v,
             Value::Ace => {
                 ace_count += 1;
@@ -66,62 +70,62 @@ fn hand_value(cards: &[&Card]) -> u8 {
 
 pub fn new_deck() -> Deck {
     vec![
-        (Suit::Hearts, Value::Ace),
-        (Suit::Hearts, Value::King),
-        (Suit::Hearts, Value::Queen),
-        (Suit::Hearts, Value::Jack),
-        (Suit::Hearts, Value::Value(10)),
-        (Suit::Hearts, Value::Value(9)),
-        (Suit::Hearts, Value::Value(8)),
-        (Suit::Hearts, Value::Value(7)),
-        (Suit::Hearts, Value::Value(6)),
-        (Suit::Hearts, Value::Value(5)),
-        (Suit::Hearts, Value::Value(4)),
-        (Suit::Hearts, Value::Value(3)),
-        (Suit::Hearts, Value::Value(2)),
-        (Suit::Hearts, Value::Value(1)),
-        (Suit::Diamonds, Value::Ace),
-        (Suit::Diamonds, Value::King),
-        (Suit::Diamonds, Value::Queen),
-        (Suit::Diamonds, Value::Jack),
-        (Suit::Diamonds, Value::Value(10)),
-        (Suit::Diamonds, Value::Value(9)),
-        (Suit::Diamonds, Value::Value(8)),
-        (Suit::Diamonds, Value::Value(7)),
-        (Suit::Diamonds, Value::Value(6)),
-        (Suit::Diamonds, Value::Value(5)),
-        (Suit::Diamonds, Value::Value(4)),
-        (Suit::Diamonds, Value::Value(3)),
-        (Suit::Diamonds, Value::Value(2)),
-        (Suit::Diamonds, Value::Value(1)),
-        (Suit::Clubs, Value::Ace),
-        (Suit::Clubs, Value::King),
-        (Suit::Clubs, Value::Queen),
-        (Suit::Clubs, Value::Jack),
-        (Suit::Clubs, Value::Value(10)),
-        (Suit::Clubs, Value::Value(9)),
-        (Suit::Clubs, Value::Value(8)),
-        (Suit::Clubs, Value::Value(7)),
-        (Suit::Clubs, Value::Value(6)),
-        (Suit::Clubs, Value::Value(5)),
-        (Suit::Clubs, Value::Value(4)),
-        (Suit::Clubs, Value::Value(3)),
-        (Suit::Clubs, Value::Value(2)),
-        (Suit::Clubs, Value::Value(1)),
-        (Suit::Spades, Value::Ace),
-        (Suit::Spades, Value::King),
-        (Suit::Spades, Value::Queen),
-        (Suit::Spades, Value::Jack),
-        (Suit::Spades, Value::Value(10)),
-        (Suit::Spades, Value::Value(9)),
-        (Suit::Spades, Value::Value(8)),
-        (Suit::Spades, Value::Value(7)),
-        (Suit::Spades, Value::Value(6)),
-        (Suit::Spades, Value::Value(5)),
-        (Suit::Spades, Value::Value(4)),
-        (Suit::Spades, Value::Value(3)),
-        (Suit::Spades, Value::Value(2)),
-        (Suit::Spades, Value::Value(1)),
+        Card::new(Suit::Hearts, Value::Ace),
+        Card::new(Suit::Hearts, Value::King),
+        Card::new(Suit::Hearts, Value::Queen),
+        Card::new(Suit::Hearts, Value::Jack),
+        Card::new(Suit::Hearts, Value::Value(10)),
+        Card::new(Suit::Hearts, Value::Value(9)),
+        Card::new(Suit::Hearts, Value::Value(8)),
+        Card::new(Suit::Hearts, Value::Value(7)),
+        Card::new(Suit::Hearts, Value::Value(6)),
+        Card::new(Suit::Hearts, Value::Value(5)),
+        Card::new(Suit::Hearts, Value::Value(4)),
+        Card::new(Suit::Hearts, Value::Value(3)),
+        Card::new(Suit::Hearts, Value::Value(2)),
+        Card::new(Suit::Hearts, Value::Value(1)),
+        Card::new(Suit::Diamonds, Value::Ace),
+        Card::new(Suit::Diamonds, Value::King),
+        Card::new(Suit::Diamonds, Value::Queen),
+        Card::new(Suit::Diamonds, Value::Jack),
+        Card::new(Suit::Diamonds, Value::Value(10)),
+        Card::new(Suit::Diamonds, Value::Value(9)),
+        Card::new(Suit::Diamonds, Value::Value(8)),
+        Card::new(Suit::Diamonds, Value::Value(7)),
+        Card::new(Suit::Diamonds, Value::Value(6)),
+        Card::new(Suit::Diamonds, Value::Value(5)),
+        Card::new(Suit::Diamonds, Value::Value(4)),
+        Card::new(Suit::Diamonds, Value::Value(3)),
+        Card::new(Suit::Diamonds, Value::Value(2)),
+        Card::new(Suit::Diamonds, Value::Value(1)),
+        Card::new(Suit::Clubs, Value::Ace),
+        Card::new(Suit::Clubs, Value::King),
+        Card::new(Suit::Clubs, Value::Queen),
+        Card::new(Suit::Clubs, Value::Jack),
+        Card::new(Suit::Clubs, Value::Value(10)),
+        Card::new(Suit::Clubs, Value::Value(9)),
+        Card::new(Suit::Clubs, Value::Value(8)),
+        Card::new(Suit::Clubs, Value::Value(7)),
+        Card::new(Suit::Clubs, Value::Value(6)),
+        Card::new(Suit::Clubs, Value::Value(5)),
+        Card::new(Suit::Clubs, Value::Value(4)),
+        Card::new(Suit::Clubs, Value::Value(3)),
+        Card::new(Suit::Clubs, Value::Value(2)),
+        Card::new(Suit::Clubs, Value::Value(1)),
+        Card::new(Suit::Spades, Value::Ace),
+        Card::new(Suit::Spades, Value::King),
+        Card::new(Suit::Spades, Value::Queen),
+        Card::new(Suit::Spades, Value::Jack),
+        Card::new(Suit::Spades, Value::Value(10)),
+        Card::new(Suit::Spades, Value::Value(9)),
+        Card::new(Suit::Spades, Value::Value(8)),
+        Card::new(Suit::Spades, Value::Value(7)),
+        Card::new(Suit::Spades, Value::Value(6)),
+        Card::new(Suit::Spades, Value::Value(5)),
+        Card::new(Suit::Spades, Value::Value(4)),
+        Card::new(Suit::Spades, Value::Value(3)),
+        Card::new(Suit::Spades, Value::Value(2)),
+        Card::new(Suit::Spades, Value::Value(1)),
     ]
 }
 
@@ -129,70 +133,77 @@ pub fn create_loaded_deck() -> Deck {
     //@note: For now just going to create a deck with all of the face cards
     //  removed
     vec![
-        (Suit::Hearts, Value::Value(9)),
-        (Suit::Hearts, Value::Value(8)),
-        (Suit::Hearts, Value::Value(7)),
-        (Suit::Hearts, Value::Value(6)),
-        (Suit::Hearts, Value::Value(5)),
-        (Suit::Hearts, Value::Value(4)),
-        (Suit::Hearts, Value::Value(3)),
-        (Suit::Hearts, Value::Value(2)),
-        (Suit::Hearts, Value::Value(1)),
-        (Suit::Diamonds, Value::Value(9)),
-        (Suit::Diamonds, Value::Value(8)),
-        (Suit::Diamonds, Value::Value(7)),
-        (Suit::Diamonds, Value::Value(6)),
-        (Suit::Diamonds, Value::Value(5)),
-        (Suit::Diamonds, Value::Value(4)),
-        (Suit::Diamonds, Value::Value(3)),
-        (Suit::Diamonds, Value::Value(2)),
-        (Suit::Diamonds, Value::Value(1)),
-        (Suit::Spades, Value::Value(9)),
-        (Suit::Spades, Value::Value(8)),
-        (Suit::Spades, Value::Value(7)),
-        (Suit::Spades, Value::Value(6)),
-        (Suit::Spades, Value::Value(5)),
-        (Suit::Spades, Value::Value(4)),
-        (Suit::Spades, Value::Value(3)),
-        (Suit::Spades, Value::Value(2)),
-        (Suit::Spades, Value::Value(1)),
-        (Suit::Clubs, Value::Value(9)),
-        (Suit::Clubs, Value::Value(8)),
-        (Suit::Clubs, Value::Value(7)),
-        (Suit::Clubs, Value::Value(6)),
-        (Suit::Clubs, Value::Value(5)),
-        (Suit::Clubs, Value::Value(4)),
-        (Suit::Clubs, Value::Value(3)),
-        (Suit::Clubs, Value::Value(2)),
-        (Suit::Clubs, Value::Value(1)),
+        Card::new(Suit::Hearts, Value::Value(9)),
+        Card::new(Suit::Hearts, Value::Value(8)),
+        Card::new(Suit::Hearts, Value::Value(7)),
+        Card::new(Suit::Hearts, Value::Value(6)),
+        Card::new(Suit::Hearts, Value::Value(5)),
+        Card::new(Suit::Hearts, Value::Value(4)),
+        Card::new(Suit::Hearts, Value::Value(3)),
+        Card::new(Suit::Hearts, Value::Value(2)),
+        Card::new(Suit::Hearts, Value::Value(1)),
+        Card::new(Suit::Diamonds, Value::Value(9)),
+        Card::new(Suit::Diamonds, Value::Value(8)),
+        Card::new(Suit::Diamonds, Value::Value(7)),
+        Card::new(Suit::Diamonds, Value::Value(6)),
+        Card::new(Suit::Diamonds, Value::Value(5)),
+        Card::new(Suit::Diamonds, Value::Value(4)),
+        Card::new(Suit::Diamonds, Value::Value(3)),
+        Card::new(Suit::Diamonds, Value::Value(2)),
+        Card::new(Suit::Diamonds, Value::Value(1)),
+        Card::new(Suit::Spades, Value::Value(9)),
+        Card::new(Suit::Spades, Value::Value(8)),
+        Card::new(Suit::Spades, Value::Value(7)),
+        Card::new(Suit::Spades, Value::Value(6)),
+        Card::new(Suit::Spades, Value::Value(5)),
+        Card::new(Suit::Spades, Value::Value(4)),
+        Card::new(Suit::Spades, Value::Value(3)),
+        Card::new(Suit::Spades, Value::Value(2)),
+        Card::new(Suit::Spades, Value::Value(1)),
+        Card::new(Suit::Clubs, Value::Value(9)),
+        Card::new(Suit::Clubs, Value::Value(8)),
+        Card::new(Suit::Clubs, Value::Value(7)),
+        Card::new(Suit::Clubs, Value::Value(6)),
+        Card::new(Suit::Clubs, Value::Value(5)),
+        Card::new(Suit::Clubs, Value::Value(4)),
+        Card::new(Suit::Clubs, Value::Value(3)),
+        Card::new(Suit::Clubs, Value::Value(2)),
+        Card::new(Suit::Clubs, Value::Value(1)),
     ]
 }
 pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
     hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
 }
 
+//@note:  This function is actually not general enough.  Hands needs to be a list of hands
+//  which can be from multiple different games and it should take a number of cards to
+//  allocate to each hand.  It might also need an allocation strategy like sequential or
+//  iterative
 pub fn allocate_cards(
     hands: &[Hand],
     allocations: &[CardAllocation],
     game_id: Uuid,
+    count: u8,
 ) -> Vec<CardAllocation> {
     // Find the current card index into the deck
-    let card_idx = allocations.iter().filter(|a| a.dealer == game_id).count();
+    let mut card_idx = allocations.iter().filter(|a| a.dealer == game_id).count();
 
     // Every hard in the game gets allocated a card
-    hands
-        .iter()
-        .filter(|hand| hand.dealer == game_id)
-        .enumerate()
-        .map(|(idx, hand)| {
-            println!("Adding card allocation: {},{}", hand.id, card_idx + idx);
-            CardAllocation {
-                card_idx: card_idx + idx,
-                dealer: game_id,
-                hand: hand.id,
+    let mut allocations = Vec::new();
+    for _ in 0..count {
+        for h in hands {
+            if h.dealer == game_id {
+                trace!("server: Adding card allocation: {},{}", h.id, card_idx);
+                allocations.push(CardAllocation {
+                    card_idx,
+                    dealer: game_id,
+                    hand: h.id,
+                });
+                card_idx += 1;
             }
-        })
-        .collect::<Vec<_>>()
+        }
+    }
+    allocations
 }
 
 pub enum ActionResolutionError {
@@ -208,7 +219,6 @@ pub fn process_hit_actions(
     hands: &[Hand],
     allocations: &[CardAllocation],
 ) -> Vec<CardAllocation> {
-    //println!("Processing Hit Actions");
     actions
         .iter()
         .filter(|(_, action)| matches!(action, Action::Hit))
@@ -218,7 +228,7 @@ pub fn process_hit_actions(
                 .iter()
                 .filter(|a| a.dealer == hand.dealer)
                 .count();
-            println!("Adding card allocation: {},{}", hand.id, card_idx);
+            trace!("Adding card allocation: {},{}", hand.id, card_idx);
             CardAllocation {
                 card_idx,
                 dealer: hand.dealer,

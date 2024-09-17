@@ -1,3 +1,4 @@
+use log::{trace, warn};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -63,17 +64,15 @@ impl DataSource {
 
     pub fn add_action(&mut self, hand_id: Uuid, action: Action) {
         match action {
-            Action::Hit => println!("Adding Hit Action for {}", hand_id),
-            Action::Hold => println!("Adding Hold Action for {}", hand_id),
+            Action::Hit => trace!("server: Adding Hit Action for {}", hand_id),
+            Action::Hold => trace!("server: Adding Hold Action for {}", hand_id),
         };
         self.actions.push((hand_id, action));
     }
 
     pub fn start_game(&mut self, game_id: Uuid) {
         // Every hand gets 2 card
-        let mut allocations = Vec::new();
-        allocations.extend(allocate_cards(&self.hands, &self.allocations, game_id));
-        allocations.extend(allocate_cards(&self.hands, &self.allocations, game_id));
+        let allocations = allocate_cards(&self.hands, &self.allocations, game_id, 2);
 
         // Grab the list of the hands that have been updated (this should be all the hands in
         // this game)
@@ -102,7 +101,6 @@ impl DataSource {
                 game_id,
                 hand_id: h.id,
             })
-            .inspect(|s| println!("Initial Sequence: {:?}", s))
             .collect::<Vec<_>>();
 
         //@todo: Sort so that the dealer is last in this list.
@@ -124,7 +122,7 @@ impl DataSource {
                 //assert!(!is_dealer(get_hand(s.hand_id)));
                 self.active_hands.push(s.hand_id)
             }
-            _ => println!("This should be an error, the sequence vec is empty"),
+            _ => warn!("This should be an error, the sequence vec is empty"),
         };
 
         // Finally push teh sequence onto the master list.
@@ -133,7 +131,6 @@ impl DataSource {
 
     pub fn process_hit_actions(&mut self) {
         let allocations = process_hit_actions(&self.actions, &self.hands, &self.allocations);
-        //println!("mapped hit actions to CardAllocations");
 
         // Check for updates to the hand states.
         let updated_hands = allocations
@@ -141,7 +138,6 @@ impl DataSource {
             .filter_map(|ca| self.hands.iter().find(|&h| h.id == ca.hand))
             .cloned()
             .collect::<Vec<_>>();
-        //println!("Mapped new allocations to their hand id's");
 
         // Merge allocations into the master list.
         self.allocations.extend(allocations);
@@ -177,7 +173,6 @@ impl DataSource {
                     &self.hand_states,
                 )
             })
-            //.inspect(|id| println!("current_active_hand: {}", id))
             .collect::<Vec<_>>();
 
         self.actions.clear();

@@ -1,3 +1,4 @@
+use log::info;
 use std::sync::mpsc;
 use uuid::Uuid;
 
@@ -45,44 +46,40 @@ pub fn process(
         if let Ok(m) = rx.try_recv() {
             let response = match m {
                 Message::CreateGame => {
-                    println!("server: Received Create Game Message");
+                    info!("server: Received Create Game Message");
                     //@todo: add_game should probably take the deck to use.
                     let game_id = ds.add_game();
                     ds.set_deck(game_id, deck.clone());
                     Response::AddResource(Resource::Game, game_id)
                 }
                 Message::AddPlayer(game_id) => {
-                    println!("server: AddPlayer");
+                    info!("server: AddPlayer");
                     let player_id = ds.add_player(game_id);
                     Response::AddResource(Resource::Player, player_id)
                 }
                 Message::AddHandAction(hand_id, action) => {
-                    println!("server: AddHandAction");
+                    info!("server: AddHandAction");
                     ds.add_action(hand_id, action);
                     let new_uuid = Uuid::new_v4();
                     Response::AddResource(Resource::HandAction, new_uuid)
                 }
                 Message::StartGame(game_id) => {
-                    println!("server: StartGame");
+                    info!("server: StartGame");
                     ds.start_game(game_id);
                     Response::StatusOk
                 }
                 Message::GetCurrentHand(game_id) => {
-                    println!("server: GetCurrentHand");
-                    let hand_id = get_active_hand(game_id, &ds.active_hands, &ds.hands);
-                    match hand_id {
-                        Some(uid) => println!("active hand for {}: {}", game_id, uid),
-                        _ => println!("No active hand for given game_id {}", game_id),
-                    };
-                    hand_id.map_or(Response::Failed, Response::Hand)
+                    info!("server: GetCurrentHand");
+                    get_active_hand(game_id, &ds.active_hands, &ds.hands)
+                        .map_or(Response::Failed, Response::Hand)
                 }
                 Message::GetHandValue(hand_id) => {
-                    println!("server: GetHandValue");
+                    info!("server: GetHandValue");
                     let hand_value = get_hand_value(hand_id, &ds.hands, &ds.allocations, &ds.decks);
                     Response::HandValue(hand_value)
                 }
                 Message::GetHandOutcome(hand_id) => {
-                    println!("server: GetHandOutcome");
+                    info!("server: GetHandOutcome");
                     let hand_outcome = get_hand_outcome(hand_id, &ds.outcomes);
                     Response::HandOutcome(hand_outcome)
                 }

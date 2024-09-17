@@ -1,3 +1,4 @@
+use std::fmt;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -6,6 +7,23 @@ pub enum Suit {
     Diamonds,
     Clubs,
     Spades,
+}
+
+impl fmt::Debug for Suit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Hearts => write!(f, "H"),
+            Self::Diamonds => write!(f, "D"),
+            Self::Clubs => write!(f, "C"),
+            Self::Spades => write!(f, "S"),
+        }
+    }
+}
+
+impl fmt::Display for Suit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[derive(Clone)]
@@ -17,8 +35,47 @@ pub enum Value {
     Value(u8),
 }
 
-pub type Card = (Suit, Value);
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ace => write!(f, "A"),
+            Self::King => write!(f, "K"),
+            Self::Queen => write!(f, "Q"),
+            Self::Jack => write!(f, "J"),
+            Self::Value(value) => write!(f, "{}", value),
+        }
+    }
+}
 
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Clone)]
+pub struct Card {
+    pub suit: Suit,
+    pub value: Value,
+}
+
+impl Card {
+    pub fn new(suit: Suit, value: Value) -> Card {
+        Card { suit, value }
+    }
+}
+
+impl fmt::Debug for Card {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Card [{}{}]", self.suit, self.value)
+    }
+}
+
+impl fmt::Display for Card {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 pub type Deck = Vec<Card>;
 
 #[derive(Clone)]

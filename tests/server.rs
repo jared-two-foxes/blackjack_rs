@@ -2,6 +2,8 @@
 // Integration tests for our blackjack server
 //
 use blackjack::{Action, Outcome, Resource, Response};
+use flexi_logger::Logger;
+use log::info;
 
 //@todo:
 //  Figure out logging, when where why how
@@ -98,6 +100,12 @@ mod test_framework {
 fn can_play_a_simple_game() {
     use test_framework::{StateController, TestState};
 
+    Logger::try_with_str("trace")
+        .unwrap()
+        .log_to_stdout()
+        .start()
+        .unwrap_or_else(|e| panic!("Logger initialization failed with {e}"));
+
     let (_, client_tx, response_rx) = blackjack::start_backend();
 
     // Data required for test.
@@ -126,12 +134,12 @@ fn can_play_a_simple_game() {
                     match resource {
                         Resource::Game => {
                             game_id = uid;
-                            println!("client: game_id={}", game_id);
+                            info!("client: game_id={}", game_id);
                             fsm.set_state(TestState::CreatePlayer(game_id));
                         }
                         Resource::Player => {
                             hand_id = uid;
-                            println!("client: hand_id={}", hand_id);
+                            info!("client: hand_id={}", hand_id);
                             fsm.set_state(TestState::BeginLoop(game_id));
                         }
                         Resource::HandAction => {
@@ -154,11 +162,11 @@ fn can_play_a_simple_game() {
                 }
                 Response::Hand(uid) => {
                     current_hand_id = uid;
-                    println!("client: Current Hand={}", current_hand_id);
+                    info!("client: Current Hand={}", current_hand_id);
                     fsm.set_state(TestState::GetHandValue(current_hand_id));
                 }
                 Response::HandValue(value) => {
-                    println!("client: Hand Value={}", value);
+                    info!("client: Hand Value={}", value);
                     if value > 17 {
                         fsm.set_state(TestState::AddAction(current_hand_id, Action::Hold));
                     } else {
@@ -169,5 +177,5 @@ fn can_play_a_simple_game() {
         }
     }
 
-    assert_eq!(Some(Outcome::Won(21)), hand_outcome);
+    assert_eq!(Some(Outcome::Lost(19)), hand_outcome);
 }
