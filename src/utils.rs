@@ -52,8 +52,8 @@ fn hand_value(cards: &[&Card]) -> u8 {
     let mut value = cards
         .iter()
         .map(|c| match c.value {
-            Value::Value(v) => v,
-            Value::Ace => {
+            CardValue::Value(v) => v,
+            CardValue::Ace => {
                 ace_count += 1;
                 11
             }
@@ -70,107 +70,65 @@ fn hand_value(cards: &[&Card]) -> u8 {
 
 pub fn new_deck() -> Deck {
     vec![
-        Card::new(Suit::Hearts, Value::Ace),
-        Card::new(Suit::Hearts, Value::King),
-        Card::new(Suit::Hearts, Value::Queen),
-        Card::new(Suit::Hearts, Value::Jack),
-        Card::new(Suit::Hearts, Value::Value(10)),
-        Card::new(Suit::Hearts, Value::Value(9)),
-        Card::new(Suit::Hearts, Value::Value(8)),
-        Card::new(Suit::Hearts, Value::Value(7)),
-        Card::new(Suit::Hearts, Value::Value(6)),
-        Card::new(Suit::Hearts, Value::Value(5)),
-        Card::new(Suit::Hearts, Value::Value(4)),
-        Card::new(Suit::Hearts, Value::Value(3)),
-        Card::new(Suit::Hearts, Value::Value(2)),
-        Card::new(Suit::Hearts, Value::Value(1)),
-        Card::new(Suit::Diamonds, Value::Ace),
-        Card::new(Suit::Diamonds, Value::King),
-        Card::new(Suit::Diamonds, Value::Queen),
-        Card::new(Suit::Diamonds, Value::Jack),
-        Card::new(Suit::Diamonds, Value::Value(10)),
-        Card::new(Suit::Diamonds, Value::Value(9)),
-        Card::new(Suit::Diamonds, Value::Value(8)),
-        Card::new(Suit::Diamonds, Value::Value(7)),
-        Card::new(Suit::Diamonds, Value::Value(6)),
-        Card::new(Suit::Diamonds, Value::Value(5)),
-        Card::new(Suit::Diamonds, Value::Value(4)),
-        Card::new(Suit::Diamonds, Value::Value(3)),
-        Card::new(Suit::Diamonds, Value::Value(2)),
-        Card::new(Suit::Diamonds, Value::Value(1)),
-        Card::new(Suit::Clubs, Value::Ace),
-        Card::new(Suit::Clubs, Value::King),
-        Card::new(Suit::Clubs, Value::Queen),
-        Card::new(Suit::Clubs, Value::Jack),
-        Card::new(Suit::Clubs, Value::Value(10)),
-        Card::new(Suit::Clubs, Value::Value(9)),
-        Card::new(Suit::Clubs, Value::Value(8)),
-        Card::new(Suit::Clubs, Value::Value(7)),
-        Card::new(Suit::Clubs, Value::Value(6)),
-        Card::new(Suit::Clubs, Value::Value(5)),
-        Card::new(Suit::Clubs, Value::Value(4)),
-        Card::new(Suit::Clubs, Value::Value(3)),
-        Card::new(Suit::Clubs, Value::Value(2)),
-        Card::new(Suit::Clubs, Value::Value(1)),
-        Card::new(Suit::Spades, Value::Ace),
-        Card::new(Suit::Spades, Value::King),
-        Card::new(Suit::Spades, Value::Queen),
-        Card::new(Suit::Spades, Value::Jack),
-        Card::new(Suit::Spades, Value::Value(10)),
-        Card::new(Suit::Spades, Value::Value(9)),
-        Card::new(Suit::Spades, Value::Value(8)),
-        Card::new(Suit::Spades, Value::Value(7)),
-        Card::new(Suit::Spades, Value::Value(6)),
-        Card::new(Suit::Spades, Value::Value(5)),
-        Card::new(Suit::Spades, Value::Value(4)),
-        Card::new(Suit::Spades, Value::Value(3)),
-        Card::new(Suit::Spades, Value::Value(2)),
-        Card::new(Suit::Spades, Value::Value(1)),
+        Card::new(Suit::Hearts, CardValue::Ace),
+        Card::new(Suit::Hearts, CardValue::King),
+        Card::new(Suit::Hearts, CardValue::Queen),
+        Card::new(Suit::Hearts, CardValue::Jack),
+        Card::new(Suit::Hearts, CardValue::Value(10)),
+        Card::new(Suit::Hearts, CardValue::Value(9)),
+        Card::new(Suit::Hearts, CardValue::Value(8)),
+        Card::new(Suit::Hearts, CardValue::Value(7)),
+        Card::new(Suit::Hearts, CardValue::Value(6)),
+        Card::new(Suit::Hearts, CardValue::Value(5)),
+        Card::new(Suit::Hearts, CardValue::Value(4)),
+        Card::new(Suit::Hearts, CardValue::Value(3)),
+        Card::new(Suit::Hearts, CardValue::Value(2)),
+        Card::new(Suit::Hearts, CardValue::Value(1)),
+        Card::new(Suit::Diamonds, CardValue::Ace),
+        Card::new(Suit::Diamonds, CardValue::King),
+        Card::new(Suit::Diamonds, CardValue::Queen),
+        Card::new(Suit::Diamonds, CardValue::Jack),
+        Card::new(Suit::Diamonds, CardValue::Value(10)),
+        Card::new(Suit::Diamonds, CardValue::Value(9)),
+        Card::new(Suit::Diamonds, CardValue::Value(8)),
+        Card::new(Suit::Diamonds, CardValue::Value(7)),
+        Card::new(Suit::Diamonds, CardValue::Value(6)),
+        Card::new(Suit::Diamonds, CardValue::Value(5)),
+        Card::new(Suit::Diamonds, CardValue::Value(4)),
+        Card::new(Suit::Diamonds, CardValue::Value(3)),
+        Card::new(Suit::Diamonds, CardValue::Value(2)),
+        Card::new(Suit::Diamonds, CardValue::Value(1)),
+        Card::new(Suit::Clubs, CardValue::Ace),
+        Card::new(Suit::Clubs, CardValue::King),
+        Card::new(Suit::Clubs, CardValue::Queen),
+        Card::new(Suit::Clubs, CardValue::Jack),
+        Card::new(Suit::Clubs, CardValue::Value(10)),
+        Card::new(Suit::Clubs, CardValue::Value(9)),
+        Card::new(Suit::Clubs, CardValue::Value(8)),
+        Card::new(Suit::Clubs, CardValue::Value(7)),
+        Card::new(Suit::Clubs, CardValue::Value(6)),
+        Card::new(Suit::Clubs, CardValue::Value(5)),
+        Card::new(Suit::Clubs, CardValue::Value(4)),
+        Card::new(Suit::Clubs, CardValue::Value(3)),
+        Card::new(Suit::Clubs, CardValue::Value(2)),
+        Card::new(Suit::Clubs, CardValue::Value(1)),
+        Card::new(Suit::Spades, CardValue::Ace),
+        Card::new(Suit::Spades, CardValue::King),
+        Card::new(Suit::Spades, CardValue::Queen),
+        Card::new(Suit::Spades, CardValue::Jack),
+        Card::new(Suit::Spades, CardValue::Value(10)),
+        Card::new(Suit::Spades, CardValue::Value(9)),
+        Card::new(Suit::Spades, CardValue::Value(8)),
+        Card::new(Suit::Spades, CardValue::Value(7)),
+        Card::new(Suit::Spades, CardValue::Value(6)),
+        Card::new(Suit::Spades, CardValue::Value(5)),
+        Card::new(Suit::Spades, CardValue::Value(4)),
+        Card::new(Suit::Spades, CardValue::Value(3)),
+        Card::new(Suit::Spades, CardValue::Value(2)),
+        Card::new(Suit::Spades, CardValue::Value(1)),
     ]
 }
 
-pub fn create_loaded_deck() -> Deck {
-    //@note: For now just going to create a deck with all of the face cards
-    //  removed
-    vec![
-        Card::new(Suit::Hearts, Value::Value(9)),
-        Card::new(Suit::Hearts, Value::Value(8)),
-        Card::new(Suit::Hearts, Value::Value(7)),
-        Card::new(Suit::Hearts, Value::Value(6)),
-        Card::new(Suit::Hearts, Value::Value(5)),
-        Card::new(Suit::Hearts, Value::Value(4)),
-        Card::new(Suit::Hearts, Value::Value(3)),
-        Card::new(Suit::Hearts, Value::Value(2)),
-        Card::new(Suit::Hearts, Value::Value(1)),
-        Card::new(Suit::Diamonds, Value::Value(9)),
-        Card::new(Suit::Diamonds, Value::Value(8)),
-        Card::new(Suit::Diamonds, Value::Value(7)),
-        Card::new(Suit::Diamonds, Value::Value(6)),
-        Card::new(Suit::Diamonds, Value::Value(5)),
-        Card::new(Suit::Diamonds, Value::Value(4)),
-        Card::new(Suit::Diamonds, Value::Value(3)),
-        Card::new(Suit::Diamonds, Value::Value(2)),
-        Card::new(Suit::Diamonds, Value::Value(1)),
-        Card::new(Suit::Spades, Value::Value(9)),
-        Card::new(Suit::Spades, Value::Value(8)),
-        Card::new(Suit::Spades, Value::Value(7)),
-        Card::new(Suit::Spades, Value::Value(6)),
-        Card::new(Suit::Spades, Value::Value(5)),
-        Card::new(Suit::Spades, Value::Value(4)),
-        Card::new(Suit::Spades, Value::Value(3)),
-        Card::new(Suit::Spades, Value::Value(2)),
-        Card::new(Suit::Spades, Value::Value(1)),
-        Card::new(Suit::Clubs, Value::Value(9)),
-        Card::new(Suit::Clubs, Value::Value(8)),
-        Card::new(Suit::Clubs, Value::Value(7)),
-        Card::new(Suit::Clubs, Value::Value(6)),
-        Card::new(Suit::Clubs, Value::Value(5)),
-        Card::new(Suit::Clubs, Value::Value(4)),
-        Card::new(Suit::Clubs, Value::Value(3)),
-        Card::new(Suit::Clubs, Value::Value(2)),
-        Card::new(Suit::Clubs, Value::Value(1)),
-    ]
-}
 pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
     hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
 }
@@ -350,10 +308,7 @@ pub fn is_game_complete(dealer: Uuid, hands: &[Hand], hand_states: &[HandState])
 
 // @todo:  I guess we need to keep this "clone" but I dont like it.
 pub fn get_hand_outcome(hand_id: Uuid, outcomes: &[HandOutcome]) -> Option<Outcome> {
-    outcomes
-        .iter()
-        .find(|o| o.0 == hand_id)
-        .map(|o| o.1.clone())
+    outcomes.iter().find(|o| o.0 == hand_id).map(|o| o.1)
 }
 
 // @todo: this should really be receiving the game_id rather than the turn_order and

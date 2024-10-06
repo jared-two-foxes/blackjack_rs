@@ -27,7 +27,7 @@ impl fmt::Display for Suit {
 }
 
 #[derive(Clone)]
-pub enum Value {
+pub enum CardValue {
     Ace,
     King,
     Queen,
@@ -35,7 +35,7 @@ pub enum Value {
     Value(u8),
 }
 
-impl fmt::Debug for Value {
+impl fmt::Debug for CardValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ace => write!(f, "A"),
@@ -47,7 +47,7 @@ impl fmt::Debug for Value {
     }
 }
 
-impl fmt::Display for Value {
+impl fmt::Display for CardValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -56,11 +56,11 @@ impl fmt::Display for Value {
 #[derive(Clone)]
 pub struct Card {
     pub suit: Suit,
-    pub value: Value,
+    pub value: CardValue,
 }
 
 impl Card {
-    pub fn new(suit: Suit, value: Value) -> Card {
+    pub fn new(suit: Suit, value: CardValue) -> Card {
         Card { suit, value }
     }
 }
@@ -122,7 +122,7 @@ pub type HandAction = (Uuid, Action);
 // the HandOutcome.
 pub type HandState = (Uuid /*this*/, Uuid /*dealer*/, State);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Outcome {
     Won(u8),
     Lost(u8),
