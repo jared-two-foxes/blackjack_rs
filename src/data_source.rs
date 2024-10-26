@@ -4,10 +4,17 @@ use uuid::Uuid;
 use crate::types::*;
 use crate::utils::*;
 
+pub enum GameState {
+    Waiting,
+    Active,
+    Finished
+}
+
 #[derive(Default)]
 pub struct DataSource {
     pub hands: Vec<Hand>,
     pub decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
+    game_states: HasMap<Uuid, GameState>,
     pub allocations: Vec<CardAllocation>,
     pub hand_states: Vec<HandState>,
     pub actions: Vec<HandAction>,
@@ -20,6 +27,7 @@ impl DataSource {
     pub fn add_game(&mut self) -> Uuid {
         let dealer_id = Uuid::new_v4();
         self.decks.insert(dealer_id, new_deck());
+        self.game_states.insert(dealer_id, GameState::Waiting);
         self.hands.push(Hand {
             id: dealer_id,
             player: dealer_id,
