@@ -15,7 +15,7 @@ pub enum GameState {
 pub struct DataSource {
     pub hands: Vec<Hand>,
     pub decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game
-    game_states: HasMap<Uuid, GameState>,
+    game_states: HashMap<Uuid, GameState>,
     pub allocations: Vec<CardAllocation>,
     pub hand_states: Vec<HandState>,
     pub actions: Vec<HandAction>,
