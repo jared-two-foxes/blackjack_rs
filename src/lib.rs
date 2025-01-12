@@ -16,32 +16,7 @@ fn open_tables(_hands: &[Hand]) -> u32 {
     unimplemented!()
 }
 
-/*
-@todo:  
-need some kind of status 
-update to let the additonal threads and 
-caller know that we have completed a 
-round.  oh also how are we going to 
-communicate changes with the calling 
-thread.
 
-@note:
-Should i change this interface so 
-that each thread/module has its own 
-"start" function.  ie backend, dealer 
-etc.
-
-im starting to think yes, there doesnt 
-seem to be a reason not to keep thr DS 
-out of the "client" side here, specially 
-if each module is going to need to 
-access some portion of that structure.
-
-@note2.  
-should I have some kind of journal that 
-i dump these thoughts knto?  seems like 
-a good idea to be honest?
-*/
 
 pub enum BackendStatus {
     UpdateComplete,
