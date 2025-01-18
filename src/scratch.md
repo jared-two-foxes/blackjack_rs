@@ -16,7 +16,7 @@ what im going to do is move everything to a systems based approach where each "s
 
 ## Earlier
 
-/*
+
 @todo:  
 need some kind of status 
 update to let the additonal threads and 
@@ -41,4 +41,3 @@ access some portion of that structure.
 should I have some kind of journal that 
 i dump these thoughts knto?  seems like 
 a good idea to be honest?
-*/
