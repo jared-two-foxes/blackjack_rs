@@ -254,24 +254,68 @@ mod test_framework {
 
 #[test]
 fn can_play_a_simple_game() {
-    use test_framework::{HandController, TestState};
-
-    /*Logger::try_with_str("trace")
-    .unwrap()
-    .log_to_stdout()
-    .start()
-    .unwrap_or_else(|e| panic!("Logger initialization failed with {e}"));*/
-
-    let (_, client_tx) = blackjack::start_backend(test_framework::create_loaded_deck);
-    let mut controller = HandController::new(TestState::GetTableList, client_tx);
-
+    start_game
+    
+    // run game simulation
     loop {
-        if controller.process() {
+        while let next = next_active_hand {
+            process_player_action
+            update_hand_state
+            
+            if is_dealer & is_bust { 
+                break; 
+            }
+        }
+        
+        // there were no hands to process so we are done with this game.
+        if hand_count == 0 {
             break;
+        } 
+    }
+    
+    hand_outcome = determine_outcome_for_hand_x
+
+    assert_eq!(Some(Outcome::Lost(19)), hand_outcome);
+}
+
+#[test]
+fn can_play_a_simple_game() {
+
+    // defines the decision matrix of
+    // the player.  true means hit. 
+    let player_decision = |hand| hame < 17; 
+    
+    let start_game = || {
+        for h in hands {
+            deal_two_cards
         }
     }
+    
+    
+    
+    start_game
+    
+    // run game simulation
+    loop {
+        let mut hand_count = 0;
+        while let Some(hand,decision) = get_hands_for_round() {
+            hand_count += 1;
+            process_player_action
+            update_hand_state
+            if is_dealer & is_bust { 
+                break; 
+            }
+        }
+        
+        // there were no hands to process so we are done with this game.
+        if hand_count == 0 {
+            break;
+        } 
+    }
+    
+    hand_outcome = determine_outcome_for_hand_x
 
-    assert_eq!(Some(Outcome::Lost(19)), controller.get_hand_outcome());
+    assert_eq!(Some(Outcome::Lost(19)), hand_outcome);
 }
 
 #[test]
