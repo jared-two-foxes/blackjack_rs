@@ -48,12 +48,10 @@ async fn main() {
         ds: ds.clone(),
     };
 
-    // Start backend processing thread
+    // Start backend processing (spawns its own thread)
     let actions_clone = actions.clone();
     let ds_for_thread = ds.lock().unwrap().clone();
-    std::thread::spawn(move || {
-        blackjack::start_backend(actions_clone, ds_for_thread);
-    });
+    blackjack::start_backend(actions_clone, ds_for_thread);
 
     let app = Router::new()
         .route("/action", post(submit_action))
