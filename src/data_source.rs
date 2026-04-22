@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::warn;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -8,7 +8,7 @@ use crate::utils::*;
 pub enum GameState {
     Waiting,
     Active,
-    Finished
+    Finished,
 }
 
 #[derive(Default)]
@@ -18,7 +18,6 @@ pub struct DataSource {
     game_states: HashMap<Uuid, GameState>,
     pub allocations: Vec<CardAllocation>,
     pub hand_states: Vec<HandState>,
-    pub actions: Vec<HandAction>,
     pub outcomes: Vec<HandOutcome>,
     sequence: Vec<Sequence>,
     pub active_hands: Vec<Uuid>,
@@ -58,36 +57,80 @@ impl DataSource {
         player_id
     }
 
+    pub fn allocate_cards(&mut self, hands: &[Hand], count: usize) -> Vec<CardAllocation> {
+        hands
+            .iter()
+            .flat_map(|h| draw_cards(h, &self.allocations, count))
+            .collect()
+    }
+
     //@todo: I think this should this return a uuid; reasons 2 fold, we probably
     //       should have a means to identify the action, and we dont want methods
     //       with no return type.
-
-    pub fn add_action(&mut self, hand_id: Uuid, action: Action) {
+    /*pub fn add_action(&mut self, hand_id: Uuid, action: Action) {
         match action {
             Action::Hit => trace!("server: Adding Hit Action for {}", hand_id),
             Action::Hold => trace!("server: Adding Hold Action for {}", hand_id),
         };
         self.actions.push((hand_id, action));
+    }*/
+
+    //
+    // These are domain specific rather than Data based.  This feels like it should
+    // reside elsewhere and that object or whatever should have a reference/own the
+    // DataSource....
+    //
+
+    pub fn get_hand(&self, hand: &Hand) -> Vec<Card> {
+        let deck = self
+            .decks
+            .get(&hand.dealer)
+            .expect("Unable to find deck for table");
+
+        self.allocations
+            .iter()
+            .filter(|a| a.hand == hand.id)
+            .map(|a| deck[a.card_idx].clone())
+            .collect::<Vec<_>>()
+    }
+
+    pub fn process_action(&mut self, action: Action, hand: &Hand, value: u8) -> State {
+        match action {
+            Action::Hit => {
+                let hands = vec![hand.clone()];
+                self.allocate_cards(&hands, 1);
+                let cards = self.get_hand(hand);
+                let new_value = hand_value(&cards);
+                if new_value > 21 {
+                    State::Bust(new_value)
+                } else if new_value == 21 {
+                    State::BlackJack
+                } else {
+                    State::Active
+                }
+            }
+            Action::Hold => State::Holding(value),
+        }
     }
 
     pub fn start_game(&mut self, game_id: Uuid) {
-        // Every hand gets 2 card
-        let allocations = allocate_cards(&self.hands, &self.allocations, game_id, 2);
-
-        // Grab the list of the hands that have been updated (this should be all the hands in
-        // this game)
-        let updated_hands = allocations
+        // Grab the hands for the given game.
+        let hands = self
+            .hands
             .iter()
-            .filter_map(|ca| self.hands.iter().find(|&h| h.id == ca.hand))
+            .filter(|h| h.dealer == game_id)
             .cloned()
             .collect::<Vec<_>>();
+
+        // Every hand gets dealt 2 cards.
+        let allocations = self.allocate_cards(&hands, 2);
 
         // Combine the allocations into the master allocation list
         self.allocations.extend(allocations);
 
         // We now need to check the hand states incase anything interesting has
         // resolved from that.
-        let resulting_states = process_hand_states(&updated_hands, &self.allocations, &self.decks);
+        let resulting_states = process_hand_states(&hands, &self.allocations, &self.decks);
 
         // Merge any hand_states into the master state list
         self.hand_states.extend(resulting_states);
@@ -125,37 +168,13 @@ impl DataSource {
             _ => warn!("This should be an error, the sequence vec is empty"),
         };
 
-        // Finally push teh sequence onto the master list.
+        // Push the sequence onto the master list.
         self.sequence.extend(sequence);
-    }
 
-    pub fn process_hit_actions(&mut self) {
-        let allocations = process_hit_actions(&self.actions, &self.hands, &self.allocations);
-
-        // Check for updates to the hand states.
-        let updated_hands = allocations
-            .iter()
-            .filter_map(|ca| self.hands.iter().find(|&h| h.id == ca.hand))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        // Merge allocations into the master list.
-        self.allocations.extend(allocations);
-
-        // Check if any of the new hands have busted or hit blackjack.
-        let resulting_states = process_hand_states(&updated_hands, &self.allocations, &self.decks);
-        //todo!("need to add a step here to iterate hand states to check for children that need to be added");
-
-        // Merge into the master state list
-        self.hand_states.extend(resulting_states);
-    }
-
-    pub fn process_hold_actions(&mut self) {
-        let hold_states =
-            process_hold_actions(&self.hands, &self.actions, &self.allocations, &self.decks);
-
-        // Merge these into the master state list
-        self.hand_states.extend(hold_states);
+        // Flag the game as active
+        self.game_states
+            .entry(game_id)
+            .and_modify(|gs| *gs = GameState::Active);
     }
 
     pub fn resolve_turn(&mut self) {
@@ -174,7 +193,5 @@ impl DataSource {
                 )
             })
             .collect::<Vec<_>>();
-
-        self.actions.clear();
     }
 }

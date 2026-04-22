@@ -1,4 +1,3 @@
-use log::trace;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -12,14 +11,6 @@ pub fn get_dealer(hand_id: Uuid, hands: &[Hand]) -> Uuid {
         .dealer
 }
 
-pub fn get_game(hand_id: Uuid, hands: &[Hand]) -> Uuid {
-    get_dealer(hand_id, hands)
-}
-
-pub fn get_hand_count(game_id: Uuid, hands: &[Hand]) -> usize {
-    hands.iter().filter(|&h| h.dealer == game_id).count()
-}
-
 pub fn get_active_hand(game_id: Uuid, active_hands: &[Uuid], hands: &[Hand]) -> Option<Uuid> {
     active_hands
         .iter()
@@ -28,7 +19,7 @@ pub fn get_active_hand(game_id: Uuid, active_hands: &[Uuid], hands: &[Hand]) -> 
         .map(|h| h.id)
 }
 
-pub fn get_hand_value(
+/*pub fn get_hand_value(
     hand_id: Uuid,
     hands: &[Hand],
     allocations: &[CardAllocation],
@@ -39,15 +30,16 @@ pub fn get_hand_value(
     let cards = allocations
         .iter()
         .filter(|a| a.hand == hand_id)
+        .clone()
         .map(|a| &deck[a.card_idx])
         .collect::<Vec<_>>();
 
     trace!("cards in hand: {:?}", cards);
 
     hand_value(&cards)
-}
+}*/
 
-fn hand_value(cards: &[&Card]) -> u8 {
+pub fn hand_value(cards: &[Card]) -> u8 {
     let mut ace_count = 0;
     let mut value = cards
         .iter()
@@ -133,67 +125,42 @@ pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
     hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
 }
 
-//@note:  This function is actually not general enough.  Hands needs to be a list of hands
+//@note:
+//  This function is actually not general enough.  Hands needs to be a list of hands
 //  which can be from multiple different games and it should take a number of cards to
 //  allocate to each hand.  It might also need an allocation strategy like sequential or
 //  iterative
-pub fn allocate_cards(
-    hands: &[Hand],
-    allocations: &[CardAllocation],
-    game_id: Uuid,
-    count: u8,
-) -> Vec<CardAllocation> {
-    // Find the current card index into the deck
-    let mut card_idx = allocations.iter().filter(|a| a.dealer == game_id).count();
-
-    // Every hard in the game gets allocated a card
-    let mut allocations = Vec::new();
-    for _ in 0..count {
-        for h in hands {
-            if h.dealer == game_id {
-                trace!("server: Adding card allocation: {},{}", h.id, card_idx);
-                allocations.push(CardAllocation {
-                    card_idx,
-                    dealer: game_id,
-                    hand: h.id,
-                });
-                card_idx += 1;
-            }
-        }
-    }
-    allocations
-}
-
-pub enum ActionResolutionError {
-    MissingHand,
-    MissingDeck,
-}
-
-//@note: Making the assumpting here that there is not going to be any actions
-//       in this list that are going to end up hitting the same deck and therefore
-//       invalidating the number deck index calculated from the allocations list.
-pub fn process_hit_actions(
-    actions: &[HandAction],
-    hands: &[Hand],
-    allocations: &[CardAllocation],
-) -> Vec<CardAllocation> {
-    actions
+//@note:
+//  It would also be nice if we had a way to express that a given parameter was the
+//  full list of a given thing, ie in this instance allocations is a list of ALL of
+//  the current allocations in this universe.
+//@note:
+//  Ive decided these are the wrong way around, at the time of writing this function
+//  accepted a list of hands and allocated new cards to each hand, this is backwards
+//  as to do so it would require passing the DataSource here and calling allocate
+//  on each hand but I  believe these functions should be DataSource ignorant, so
+//  the need to reverse the implementations
+//@note:
+//  This currently doesnt reference the deck to which the cards are being drawn from
+//  so we dont actually know if we've 'decked' or not.
+pub fn draw_cards(hand: &Hand, allocations: &[CardAllocation], count: usize) -> Vec<CardAllocation> {
+    // Find the current card index into the deck, calculated by grabbing all of
+    // the allocated cards and counting them
+    let card_idx = allocations
         .iter()
-        .filter(|(_, action)| matches!(action, Action::Hit))
-        .filter_map(|(hand_id, _)| hands.iter().find(|hand| hand.id == *hand_id))
-        .map(|hand| {
-            let card_idx = allocations
-                .iter()
-                .filter(|a| a.dealer == hand.dealer)
-                .count();
-            trace!("Adding card allocation: {},{}", hand.id, card_idx);
+        .filter(|a| a.dealer == hand.dealer)
+        .count();
+
+    // for each card that is to be allocated, created a CardAllocation and return
+    (0..count)
+        .map(|i| {
             CardAllocation {
-                card_idx,
+                card_idx: card_idx + i,
                 dealer: hand.dealer,
                 hand: hand.id,
             }
         })
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 pub fn process_hand_states(
@@ -210,7 +177,7 @@ pub fn process_hand_states(
         let cards = card_allocations
             .iter()
             .filter(|a| a.hand == h.id)
-            .map(|a| &deck[a.card_idx])
+            .map(|a| deck[a.card_idx].clone())
             .collect::<Vec<_>>();
 
         //@note: its probably better to just not add the actives here rather than strip them out later.
@@ -227,38 +194,6 @@ pub fn process_hand_states(
         .into_iter()
         .filter(|(_, _, hs)| !matches!(hs, State::Active))
         .collect()
-}
-
-pub fn process_hold_actions(
-    hands: &[Hand],
-    actions: &[HandAction],
-    allocations: &[CardAllocation],
-    decks: &HashMap<Uuid, Deck>,
-) -> Vec<HandState> {
-    actions
-        .iter()
-        .filter(|(_, action)| matches!(action, Action::Hold))
-        .map(|(hand, _)| {
-            // Grab the deck for the hand.
-            let dealer_id = get_dealer(*hand, hands);
-            let deck = decks
-                .get(&dealer_id)
-                .expect("Unable to find deck for table");
-
-            // Calculate the hand value
-            let cards = allocations
-                .iter()
-                .filter(|a| a.hand == *hand)
-                .map(|a| &deck[a.card_idx])
-                .collect::<Vec<_>>();
-            let value = hand_value(&cards);
-
-            //@todo: I dont know if I need to check if the hand is blackJack or Bust or anything
-            //here.
-
-            (*hand, dealer_id, State::Holding(value))
-        })
-        .collect::<Vec<_>>()
 }
 
 // Iterate all of the HandStates in hand_state, for any HandState for which there is a corosponding
@@ -292,23 +227,15 @@ pub fn resolve_outcomes(hand_values: &[HandState], outcomes: &[HandOutcome]) -> 
                         }
                     }
                 },
-               _ => unreachable!("The dealer's hand is still active while attempting to resolve the hand outcomes") 
+               _ => unreachable!("The dealer's hand is still active while attempting to resolve the hand outcomes")
             };
             (h.0, state)
         })
         .collect::<_>()
 }
 
-pub fn is_game_complete(dealer: Uuid, hands: &[Hand], hand_states: &[HandState]) -> bool {
-    // A game is complete if all of the hands associated with it have HandState's.
-    let hand_count = hands.iter().filter(|h| dealer == h.dealer).count();
-    let state_count = hand_states.iter().filter(|hs| dealer == hs.1).count();
-    hand_count == state_count
-}
-
-// @todo:  I guess we need to keep this "clone" but I dont like it.
-pub fn get_hand_outcome(hand_id: Uuid, outcomes: &[HandOutcome]) -> Option<Outcome> {
-    outcomes.iter().find(|o| o.0 == hand_id).map(|o| o.1)
+fn get_game(current_hand_id: uuid::Uuid, hands: &[Hand]) -> uuid::Uuid {
+    hands.iter().find(|h| h.id == current_hand_id).expect("passed an invalid current_hand_id").dealer
 }
 
 // @todo: this should really be receiving the game_id rather than the turn_order and
