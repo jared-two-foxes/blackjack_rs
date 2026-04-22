@@ -5,13 +5,14 @@ use uuid::Uuid;
 use crate::types::*;
 use crate::utils::*;
 
+#[derive(Debug, Clone)]
 pub enum GameState {
     Waiting,
     Active,
     Finished,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct DataSource {
     pub hands: Vec<Hand>,
     pub decks: HashMap<Uuid, Deck>, // map of game_id to Deck for a given game

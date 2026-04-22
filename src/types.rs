@@ -85,13 +85,14 @@ pub struct Hand {
     pub dealer: Uuid,
 }
 
+#[derive(Clone)]
 pub struct CardAllocation {
     pub hand: Uuid,
     pub dealer: Uuid, //< this is also dealer's uuid since that is how we identify specific decks.
     pub card_idx: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sequence {
     pub game_id: Uuid,
     pub hand_id: Uuid,
@@ -104,7 +105,7 @@ pub enum Action {
     Hold,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum State {
     Active,
     Holding(u8),
