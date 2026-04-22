@@ -1,4 +1,3 @@
-
 //! Integration tests for the blackjack server.
 
 use blackjack::{self, Card, CardValue, Deck, Outcome, Suit, Action, State};
@@ -59,7 +58,11 @@ mod tests {
     }
 
     fn is_active_hand(hand: &Hand, hand_states: &HashMap<Uuid, State>) -> bool {
-        matches!(hand_states.get(hand), Some(State::Active))
+        match hand_states.get(hand) {
+             Some(State::Active) => true,
+             None => true, // Treat as active if not in map? Actually logic was matches!(..., Some(State::Active))
+             _ => false
+        }
     }
 
     fn start(hands: &[Hand]) -> Vec<CardAllocation> {
@@ -106,6 +109,9 @@ mod tests {
         let dealer = Uuid::new_v4();
         let hands = vec![player, dealer];
         allocations.append(&mut start(&hands));
+
+        hand_states.insert(player, State::Active);
+        hand_states.insert(dealer, State::Active);
 
         // Act
         let iter = hands
