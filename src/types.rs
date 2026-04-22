@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
@@ -78,14 +79,14 @@ impl fmt::Display for Card {
 }
 pub type Deck = Vec<Card>;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Hand {
     pub id: Uuid,
     pub player: Uuid,
     pub dealer: Uuid,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CardAllocation {
     pub hand: Uuid,
     pub dealer: Uuid, //< this is also dealer's uuid since that is how we identify specific decks.
@@ -105,7 +106,7 @@ pub enum Action {
     Hold,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum State {
     Active,
     Holding(u8),

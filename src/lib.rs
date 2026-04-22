@@ -3,9 +3,11 @@ mod types;
 mod utils;
 
 pub use data_source::DataSource;
-pub use types::{Action, Card, CardValue, Deck, Hand, HandAction, HandState, Outcome, State, Suit};
+pub use types::{
+    Action, Card, CardAllocation, CardValue, Deck, Hand, HandAction, HandState, Outcome, State,
+    Suit,
+};
 pub use utils::hand_value;
-use types::CardAllocation;
 
 use log::trace;
 use std::collections::HashMap;
