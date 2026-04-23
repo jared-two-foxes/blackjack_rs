@@ -1,6 +1,9 @@
 //! Integration tests for the blackjack server.
 
-use blackjack::{self, Card, CardValue, Deck, Outcome, Suit, Action, State};
+use blackjack::{
+    self,
+    types::{Action, Card, CardValue, Deck, Outcome, State, Suit},
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -59,9 +62,9 @@ mod tests {
 
     fn is_active_hand(hand: &Hand, hand_states: &HashMap<Uuid, State>) -> bool {
         match hand_states.get(hand) {
-             Some(State::Active) => true,
-             None => true, // Treat as active if not in map? Actually logic was matches!(..., Some(State::Active))
-             _ => false
+            Some(State::Active) => true,
+            None => true, // Treat as active if not in map? Actually logic was matches!(..., Some(State::Active))
+            _ => false,
         }
     }
 
@@ -73,7 +76,10 @@ mod tests {
             .flat_map(|(i, h)| {
                 vec![
                     CardAllocation { hand: *h, card: i },
-                    CardAllocation { hand: *h, card: i * table_size },
+                    CardAllocation {
+                        hand: *h,
+                        card: i * table_size,
+                    },
                 ]
             })
             .collect()
@@ -118,7 +124,7 @@ mod tests {
             .iter()
             .cycle()
             .filter(|&h| is_active_hand(h, &hand_states))
-            .map(|h| (h, blackjack::hand_value(&get_hand(h))));
+            .map(|h| (h, blackjack::utils::hand_value(&get_hand(h))));
         for (_hand, value) in iter.take(1) {
             let _action = determine_action(value);
             let _state = State::Active;

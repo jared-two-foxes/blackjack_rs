@@ -25,6 +25,23 @@ pub struct DataSource {
 }
 
 impl DataSource {
+    /// Removes a player from a table. Returns the hand id if found and removed.
+    pub fn remove_player(&mut self, dealer_id: Uuid, player_id: Uuid) -> Option<Uuid> {
+        if let Some(pos) = self
+            .hands
+            .iter()
+            .position(|h| h.dealer == dealer_id && h.player == player_id)
+        {
+            let hand_id = self.hands[pos].id;
+            self.hands.remove(pos);
+            // Also remove from active_hands if present
+            self.active_hands.retain(|&hid| hid != hand_id);
+            Some(hand_id)
+        } else {
+            None
+        }
+    }
+
     pub fn add_game(&mut self) -> Uuid {
         let dealer_id = Uuid::new_v4();
         self.decks.insert(dealer_id, new_deck());
@@ -47,15 +64,23 @@ impl DataSource {
     //@todo: this is a little awkward.  We should potentially have a second function to
     // create a hand which returns the hand_id else how does the client know how to add
     // an action?  Yes this for sure.  id & player should be different id's
-    pub fn add_player(&mut self, dealer_id: Uuid) -> Uuid {
-        let player_id = Uuid::new_v4();
+    /// Attempts to seat a player at a table (dealer_id). Returns Some(hand_id) if seated, None if already seated.
+    pub fn add_player(&mut self, dealer_id: Uuid, player_id: Uuid) -> Option<Uuid> {
+        // Check if player is already seated at this table
+        if self
+            .hands
+            .iter()
+            .any(|h| h.dealer == dealer_id && h.player == player_id)
+        {
+            return None;
+        }
+        let hand_id = Uuid::new_v4();
         self.hands.push(Hand {
-            id: player_id,
+            id: hand_id,
             player: player_id,
             dealer: dealer_id,
         });
-
-        player_id
+        Some(hand_id)
     }
 
     pub fn allocate_cards(&mut self, hands: &[Hand], count: usize) -> Vec<CardAllocation> {

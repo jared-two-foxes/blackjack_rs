@@ -1,14 +1,72 @@
-use axum::{extract::Path, extract::State as AxumState, Json};
-use serde::{Deserialize, Serialize};
-// use uuid::Uuid; // already imported above if needed
+// --- Module declarations ---
+mod data_source;
+pub mod types;
+pub mod utils;
 
-/// Table state returned to clients.
+// --- External Crates and Prelude Imports ---
+use axum::{
+    extract::{Json as AxumJson, Path, State as AxumState},
+    routing::{get, post},
+    Json, Router,
+};
+use log::trace;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use uuid::Uuid;
+
+// --- Type Definitions ---
+
+#[derive(Clone)]
+struct AppState {
+    pub actions: Arc<Mutex<Vec<crate::types::HandAction>>>,
+    pub ds: Arc<Mutex<crate::data_source::DataSource>>,
+}
+
 #[derive(Serialize)]
 pub struct TableState {
-    pub hands: Vec<crate::Hand>,
-    pub allocations: Vec<crate::CardAllocation>,
-    pub hand_states: Vec<crate::HandState>,
+    pub hands: Vec<crate::types::Hand>,
+    pub allocations: Vec<crate::types::CardAllocation>,
+    pub hand_states: Vec<crate::types::HandState>,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct HandActionMsg {
+    pub hand_id: Uuid,
+    pub action: ActionMsg,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum ActionMsg {
+    Hit,
+    Hold,
+}
+
+#[derive(Deserialize)]
+pub struct JoinTableRequest {
+    pub player_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct JoinTableResponse {
+    pub hand_id: Option<Uuid>,
+    pub already_seated: bool,
+}
+
+#[derive(Deserialize)]
+pub struct LeaveTableRequest {
+    pub player_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct LeaveTableResponse {
+    pub hand_id: Option<Uuid>,
+    pub was_active: bool,
+    pub left: bool,
+}
+
+// --- Handler Functions ---
 
 /// Handler for GET /table/:table_id: get full state for a table.
 async fn get_table_state(
@@ -46,28 +104,14 @@ async fn get_table_state(
     })
 }
 
-/// Message sent by clients to submit an action for a hand.
-#[derive(Serialize, Deserialize)]
-pub struct HandActionMsg {
-    pub hand_id: Uuid,
-    pub action: ActionMsg,
-}
-
-/// Supported player actions.
-#[derive(Serialize, Deserialize)]
-pub enum ActionMsg {
-    Hit,
-    Hold,
-}
-
 /// Handler for POST /action: submit a player action.
 async fn submit_action(
     AxumState(state): AxumState<AppState>,
     Json(msg): Json<HandActionMsg>,
 ) -> &'static str {
     let action = match msg.action {
-        ActionMsg::Hit => crate::Action::Hit,
-        ActionMsg::Hold => crate::Action::Hold,
+        ActionMsg::Hit => crate::types::Action::Hit,
+        ActionMsg::Hold => crate::types::Action::Hold,
     };
     let hand_action = (msg.hand_id, action);
     if let Ok(mut queue) = state.actions.lock() {
@@ -76,39 +120,57 @@ async fn submit_action(
     "Action received"
 }
 
-/// Library for blackjack_rs: core logic, types, and Axum app construction.
-// --- External Crates ---
-use log::trace;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use uuid::Uuid;
+/// Handler for POST /table/:table_id/join: seat a player at a table if not already seated.
+async fn join_table(
+    AxumState(state): AxumState<AppState>,
+    Path(table_id): Path<Uuid>,
+    AxumJson(req): AxumJson<JoinTableRequest>,
+) -> Json<JoinTableResponse> {
+    let mut ds = state.ds.lock().unwrap();
+    let result = ds.add_player(table_id, req.player_id);
+    Json(JoinTableResponse {
+        hand_id: result,
+        already_seated: result.is_none(),
+    })
+}
 
-mod data_source;
-mod types;
-mod utils;
-
-// --- Public API ---
-// Only re-export if not defined in this file, and only if needed externally
-pub use data_source::DataSource;
-pub use types::{
-    Action, Card, CardAllocation, CardValue, Deck, Hand, HandAction, HandState, Outcome, State,
-    Suit,
-};
-pub use utils::hand_value;
-
-// Export Axum handlers for use in main and tests
-// (do not re-export here to avoid duplicate symbol errors)
-
-// --- Axum App Construction (for main and tests) ---
-use axum::{
-    routing::{get, post},
-    Router,
-};
+/// Handler for POST /table/:table_id/leave: remove a player from a table, submit Hold if midgame.
+async fn leave_table(
+    AxumState(state): AxumState<AppState>,
+    Path(table_id): Path<Uuid>,
+    AxumJson(req): AxumJson<LeaveTableRequest>,
+) -> Json<LeaveTableResponse> {
+    let mut ds = state.ds.lock().unwrap();
+    // Find the hand for this player at this table
+    let hand = ds
+        .hands
+        .iter()
+        .find(|h| h.dealer == table_id && h.player == req.player_id)
+        .cloned();
+    let mut was_active = false;
+    let mut left = false;
+    let hand_id = hand.as_ref().map(|h| h.id);
+    if let Some(h) = hand {
+        // If hand is still active, submit Hold action
+        if ds.active_hands.contains(&h.id) {
+            was_active = true;
+            // Remove from active_hands and treat as Hold
+            ds.active_hands.retain(|&hid| hid != h.id);
+            // Optionally, you could push a Hold action to the action queue here if needed
+        }
+        // Remove the hand from the table
+        ds.remove_player(table_id, req.player_id);
+        left = true;
+    }
+    Json(LeaveTableResponse {
+        hand_id,
+        was_active,
+        left,
+    })
+}
 
 // --- Backend Processing ---
 
-/// Start the backend processing thread for user actions and game state.
 pub fn start_backend(
     actions: Arc<Mutex<Vec<crate::types::HandAction>>>,
     ds: crate::data_source::DataSource,
@@ -136,7 +198,6 @@ pub fn start_backend(
     })
 }
 
-/// Process user actions and update allocations and hand states.
 fn process_user_actions(
     actions: &[crate::types::HandAction],
     hands: &[crate::types::Hand],
@@ -182,14 +243,8 @@ fn process_user_actions(
     (new_allocations, resulting_states)
 }
 
-/// Shared application state for Axum handlers.
-#[derive(Clone)]
-struct AppState {
-    pub actions: Arc<Mutex<Vec<crate::types::HandAction>>>,
-    pub ds: Arc<Mutex<crate::data_source::DataSource>>,
-}
+// --- App Construction ---
 
-/// Helper to create the Axum app and shared state (useful for tests and main).
 pub fn app_and_state() -> Router<()> {
     let actions = Arc::new(Mutex::new(Vec::new()));
     let ds = Arc::new(Mutex::new(crate::data_source::DataSource::default()));
@@ -205,10 +260,10 @@ pub fn app_and_state() -> Router<()> {
     };
 
     // Build Axum app
-    let app = Router::new()
+    Router::new()
         .route("/action", post(submit_action))
         .route("/table/:table_id", get(get_table_state))
-        .with_state(state);
-
-    app
+        .route("/table/:table_id/join", post(join_table))
+        .route("/table/:table_id/leave", post(leave_table))
+        .with_state(state)
 }
