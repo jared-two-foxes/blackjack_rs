@@ -15,6 +15,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -24,7 +25,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
-    pub actions: Arc<Mutex<Vec<crate::types::HandAction>>>,
+    pub actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>>,
     pub ds: Arc<Mutex<crate::data_source::DataSource>>,
 }
 
@@ -42,6 +43,7 @@ pub struct TableState {
     pub hands: Vec<HandInfo>,
     pub outcomes: Vec<(Uuid, String)>,
     pub bets: Vec<crate::types::Bet>,
+    pub active_hands: Vec<Uuid>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -54,6 +56,9 @@ pub struct HandActionMsg {
 pub enum ActionMsg {
     Hit,
     Hold,
+    DoubleDown,
+    Split,
+    Surrender,
 }
 
 #[derive(Deserialize)]
@@ -118,16 +123,24 @@ async fn get_table_state(
     let ds = state.ds.lock().unwrap();
 
     // Game state string + seconds_remaining
-    let (game_state_str, seconds_remaining) = match ds.get_game_states().get(&table_id) {
-        Some(GameState::Waiting) => ("waiting".to_string(), None),
+    let (game_state_str, seconds_remaining, game_state_enum) = match ds.get_game_states().get(&table_id) {
+        Some(GameState::Waiting) => ("waiting".to_string(), None, GameState::Waiting),
         Some(GameState::Countdown { started_at }) => {
             let elapsed = started_at.elapsed().as_secs();
             let remaining = effective_countdown_secs().saturating_sub(elapsed);
-            ("countdown".to_string(), Some(remaining))
+            (
+                "countdown".to_string(),
+                Some(remaining),
+                GameState::Countdown { started_at: *started_at },
+            )
         }
-        Some(GameState::Active) => ("active".to_string(), None),
-        Some(GameState::Resolving { .. }) => ("resolving".to_string(), None),
-        None => ("unknown".to_string(), None),
+        Some(GameState::Active) => ("active".to_string(), None, GameState::Active),
+        Some(GameState::Resolving { started_at }) => (
+            "resolving".to_string(),
+            None,
+            GameState::Resolving { started_at: *started_at },
+        ),
+        None => ("unknown".to_string(), None, GameState::Waiting),
     };
 
     // Build HandInfo for each hand at this table
@@ -136,7 +149,14 @@ async fn get_table_state(
         .iter()
         .filter(|h| h.dealer == table_id)
         .map(|h| {
-            let cards = ds.get_hand(h);
+            // Hide dealer hole card during Active phase
+            let cards = if h.id == h.dealer && matches!(game_state_enum, GameState::Active) {
+                let mut v = ds.get_hand(h);
+                v.truncate(1);
+                v
+            } else {
+                ds.get_hand(h)
+            };
             let state_str = ds
                 .hand_states
                 .iter()
@@ -146,6 +166,7 @@ async fn get_table_state(
                     State::Bust(v) => format!("bust:{}", v),
                     State::Holding(v) => format!("holding:{}", v),
                     State::Active => "active".to_string(),
+                    State::Surrendered => "surrendered".to_string(),
                 });
             HandInfo {
                 hand: h.clone(),
@@ -155,13 +176,21 @@ async fn get_table_state(
         })
         .collect();
 
-    // Outcomes for this table
+    // active_hands for this table
     let table_hand_ids: std::collections::HashSet<Uuid> = ds
         .hands
         .iter()
         .filter(|h| h.dealer == table_id)
         .map(|h| h.id)
         .collect();
+    let active_hands: Vec<Uuid> = ds
+        .active_hands
+        .iter()
+        .filter(|id| table_hand_ids.contains(id))
+        .cloned()
+        .collect();
+
+    // Outcomes for this table
     let outcomes: Vec<(Uuid, String)> = ds
         .outcomes
         .iter()
@@ -171,6 +200,7 @@ async fn get_table_state(
                 Outcome::Won(v) => format!("won:{}", v),
                 Outcome::Lost(v) => format!("lost:{}", v),
                 Outcome::Push => "push".to_string(),
+                Outcome::Surrendered => "surrendered".to_string(),
             };
             (*hid, s)
         })
@@ -190,6 +220,7 @@ async fn get_table_state(
         hands,
         outcomes,
         bets,
+        active_hands,
     })
 }
 
@@ -197,16 +228,39 @@ async fn get_table_state(
 async fn submit_action(
     AxumState(state): AxumState<AppState>,
     Json(msg): Json<HandActionMsg>,
-) -> &'static str {
+) -> (axum::http::StatusCode, &'static str) {
+    use axum::http::StatusCode;
+
+    // Light validation: hand must exist and game must be active
+    {
+        let ds = state.ds.lock().unwrap();
+        let hand = ds.hands.iter().find(|h| h.id == msg.hand_id);
+        let hand = match hand {
+            Some(h) => h.clone(),
+            None => return (StatusCode::BAD_REQUEST, "hand not found"),
+        };
+        let game_active = matches!(
+            ds.get_game_states().get(&hand.dealer),
+            Some(GameState::Active)
+        );
+        if !game_active {
+            return (StatusCode::BAD_REQUEST, "game not active");
+        }
+    }
+
     let action = match msg.action {
         ActionMsg::Hit => crate::types::Action::Hit,
         ActionMsg::Hold => crate::types::Action::Hold,
+        ActionMsg::DoubleDown => crate::types::Action::DoubleDown,
+        ActionMsg::Split => crate::types::Action::Split,
+        ActionMsg::Surrender => crate::types::Action::Surrender,
     };
-    let hand_action = (msg.hand_id, action);
+
     if let Ok(mut queue) = state.actions.lock() {
-        queue.push(hand_action);
+        queue.insert(msg.hand_id, action);
     }
-    "Action received"
+
+    (StatusCode::ACCEPTED, "Action queued")
 }
 
 /// Handler for POST /table/:table_id/join: seat a player at a table if not already seated.
@@ -372,23 +426,23 @@ async fn place_bet_handler(
 // --- Backend Processing ---
 
 pub fn start_backend(
-    actions: Arc<Mutex<Vec<crate::types::HandAction>>>,
+    actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>>,
     ds: Arc<Mutex<crate::data_source::DataSource>>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         loop {
             // ── Step 1: Drain active player actions from the queue ──────────────────
-            let mut to_process: Vec<crate::types::HandAction> = Vec::new();
+            let mut to_process: Vec<(Uuid, crate::types::Action)> = Vec::new();
             if let Ok(mut actions_guard) = actions.try_lock() {
                 let active_hands_snapshot = {
                     let ds_guard = ds.lock().unwrap();
                     ds_guard.active_hands.clone()
                 };
-                let (active, remaining): (Vec<_>, Vec<_>) = actions_guard
-                    .drain(..)
-                    .partition(|a| active_hands_snapshot.contains(&a.0));
-                *actions_guard = remaining;
-                to_process = active;
+                for hand_id in &active_hands_snapshot {
+                    if let Some(action) = actions_guard.remove(hand_id) {
+                        to_process.push((*hand_id, action));
+                    }
+                }
             }
 
             // ── Step 2: Process player actions ──────────────────────────────────────
@@ -440,9 +494,120 @@ pub fn start_backend(
                                 ds_guard.hand_states.push((*hand_id, hand.dealer, s));
                             }
                         }
+                        Action::DoubleDown => {
+                            // Must have exactly 2 cards
+                            let card_count = ds_guard
+                                .allocations
+                                .iter()
+                                .filter(|a| a.hand == *hand_id)
+                                .count();
+                            if card_count != 2 {
+                                continue;
+                            }
+                            // Find bet and double it; deduct extra from balance
+                            let bet_info = ds_guard
+                                .bets
+                                .iter()
+                                .find(|b| b.hand_id == *hand_id)
+                                .map(|b| (b.amount, b.player_id));
+                            let (original_amount, player_id) = match bet_info {
+                                Some(v) => v,
+                                None => continue,
+                            };
+                            // Deduct and double
+                            {
+                                let player = match ds_guard.players.get_mut(&player_id) {
+                                    Some(p) => p,
+                                    None => continue,
+                                };
+                                if player.balance < original_amount {
+                                    continue; // insufficient funds — skip
+                                }
+                                player.balance -= original_amount;
+                            }
+                            if let Some(bet) = ds_guard.bets.iter_mut().find(|b| b.hand_id == *hand_id) {
+                                bet.amount *= 2;
+                            }
+                            // Deal exactly 1 card
+                            let new_allocs =
+                                ds_guard.allocate_cards(std::slice::from_ref(&hand), 1);
+                            ds_guard.allocations.extend(new_allocs);
+                            // Compute result — NEVER BlackJack (always 1:1)
+                            let cards = ds_guard.get_hand(&hand);
+                            let v = hand_value(&cards);
+                            let s = if v > 21 {
+                                State::Bust(v)
+                            } else {
+                                State::Holding(v) // even if v==21, not BlackJack
+                            };
+                            if let Some(existing) =
+                                ds_guard.hand_states.iter_mut().find(|hs| hs.0 == *hand_id)
+                            {
+                                *existing = (*hand_id, hand.dealer, s);
+                            } else {
+                                ds_guard.hand_states.push((*hand_id, hand.dealer, s));
+                            }
+                        }
+                        Action::Surrender => {
+                            // Must have exactly 2 cards
+                            let card_count = ds_guard
+                                .allocations
+                                .iter()
+                                .filter(|a| a.hand == *hand_id)
+                                .count();
+                            if card_count != 2 {
+                                continue;
+                            }
+                            // Mark as Surrendered
+                            if let Some(existing) =
+                                ds_guard.hand_states.iter_mut().find(|hs| hs.0 == *hand_id)
+                            {
+                                *existing = (*hand_id, hand.dealer, State::Surrendered);
+                            } else {
+                                ds_guard
+                                    .hand_states
+                                    .push((*hand_id, hand.dealer, State::Surrendered));
+                            }
+                            // Pre-insert outcome so resolve_outcomes skips this hand
+                            ds_guard.outcomes.push((*hand_id, Outcome::Surrendered));
+                        }
+                        Action::Split => {
+                            // Must have exactly 2 cards
+                            let card_count = ds_guard
+                                .allocations
+                                .iter()
+                                .filter(|a| a.hand == *hand_id)
+                                .count();
+                            if card_count != 2 {
+                                continue;
+                            }
+                            // Both cards must share the same split category
+                            let hand_cards = ds_guard.get_hand(&hand);
+                            if hand_cards.len() < 2 {
+                                continue;
+                            }
+                            let v0 = crate::utils::card_split_value(&hand_cards[0]);
+                            let v1 = crate::utils::card_split_value(&hand_cards[1]);
+                            if v0 != v1 {
+                                continue;
+                            }
+                            // Find original bet amount
+                            let original_amount = match ds_guard
+                                .bets
+                                .iter()
+                                .find(|b| b.hand_id == *hand_id)
+                                .map(|b| b.amount)
+                            {
+                                Some(a) => a,
+                                None => continue,
+                            };
+                            // Execute split — do NOT call resolve_turn; player continues on original hand
+                            ds_guard.split_hand(*hand_id, hand.player, hand.dealer, original_amount);
+                            continue; // skip the resolve_turn call at the bottom of this loop
+                        }
                     }
 
-                    // Advance to the next hand after each action
+                    // Advance to the next hand after each action (except Split — handled above)
                     ds_guard.resolve_turn();
                 }
 
@@ -551,7 +716,8 @@ async fn debug_set_deck(
 }
 
 pub fn app_and_state() -> Router<()> {
-    let actions = Arc::new(Mutex::new(Vec::new()));
+        let actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>> =
+            Arc::new(Mutex::new(HashMap::new()));
     let mut ds_inner = crate::data_source::DataSource::default();
 
     // Generate tables at startup
@@ -866,7 +1032,8 @@ mod tests {
         ds_inner.place_bet(player_id, table_id, 1).unwrap();
         ds_inner.start_game(table_id); // transitions to Active
 
-        let actions = Arc::new(Mutex::new(Vec::new()));
+    let actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>> =
+        Arc::new(Mutex::new(HashMap::new()));
         let ds = Arc::new(Mutex::new(ds_inner));
 
         let state = AppState {

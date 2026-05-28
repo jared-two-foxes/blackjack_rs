@@ -104,6 +104,9 @@ pub struct Sequence {
 pub enum Action {
     Hit,
     Hold,
+    DoubleDown,
+    Split,
+    Surrender,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +115,7 @@ pub enum State {
     Holding(u8),
     Bust(u8),
     BlackJack,
+    Surrendered,
 }
 
 //pair mapping hand to an action
@@ -128,6 +132,7 @@ pub enum Outcome {
     Won(u8),
     Lost(u8),
     Push,
+    Surrendered,
 }
 
 pub type HandOutcome = (Uuid, Outcome);

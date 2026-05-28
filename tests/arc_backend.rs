@@ -14,6 +14,7 @@ use uuid::Uuid;
 use blackjack::data_source::DataSource;
 use blackjack::start_backend;
 use blackjack::types::{Action, Hand};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -122,10 +123,10 @@ fn test_hit_action_persists_allocation_to_datasource() {
     ds_inner.active_hands.push(hand_id);
 
     let ds = Arc::new(Mutex::new(ds_inner));
-    let actions: Arc<Mutex<Vec<blackjack::types::HandAction>>> = Arc::new(Mutex::new(Vec::new()));
+    let actions: Arc<Mutex<HashMap<Uuid, Action>>> = Arc::new(Mutex::new(HashMap::new()));
 
     // Push a Hit action for the active hand.
-    actions.lock().unwrap().push((hand_id, Action::Hit));
+    actions.lock().unwrap().insert(hand_id, Action::Hit);
 
     // Start the backend loop.
     let _handle = start_backend(actions.clone(), ds.clone());
@@ -178,13 +179,13 @@ fn test_partition_active_vs_inactive_hand_actions() {
     ds_inner.active_hands.push(active_hand_id);
 
     let ds = Arc::new(Mutex::new(ds_inner));
-    let actions: Arc<Mutex<Vec<blackjack::types::HandAction>>> = Arc::new(Mutex::new(Vec::new()));
+    let actions: Arc<Mutex<HashMap<Uuid, Action>>> = Arc::new(Mutex::new(HashMap::new()));
 
     // Push one action for the active hand and one for the inactive hand.
     {
         let mut q = actions.lock().unwrap();
-        q.push((active_hand_id, Action::Hit));
-        q.push((inactive_hand_id, Action::Hit));
+        q.insert(active_hand_id, Action::Hit);
+        q.insert(inactive_hand_id, Action::Hit);
     }
 
     let _handle = start_backend(actions.clone(), ds.clone());
@@ -204,11 +205,11 @@ fn test_partition_active_vs_inactive_hand_actions() {
         );
     }
 
-    // The inactive-hand action must still be in the queue (put back, not consumed).
+    // The inactive-hand action must still be in the queue (not consumed by the backend).
     {
         let q = actions.lock().unwrap();
         assert!(
-            q.iter().any(|(id, _)| *id == inactive_hand_id),
+            q.contains_key(&inactive_hand_id),
             "inactive-hand action must remain in the queue after the backend tick"
         );
     }
@@ -219,7 +220,7 @@ fn test_partition_active_vs_inactive_hand_actions() {
 #[test]
 fn test_backend_thread_alive_after_sleep() {
     let ds = Arc::new(Mutex::new(DataSource::default()));
-    let actions: Arc<Mutex<Vec<blackjack::types::HandAction>>> = Arc::new(Mutex::new(Vec::new()));
+    let actions: Arc<Mutex<HashMap<Uuid, Action>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let handle = start_backend(actions, ds);
 

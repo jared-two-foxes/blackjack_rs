@@ -42,6 +42,16 @@ pub fn get_active_hand(game_id: Uuid, active_hands: &[Uuid], hands: &[Hand]) -> 
     hand_value(&cards)
 }*/
 
+/// Returns a comparable u8 for split eligibility.
+/// Two cards can be split when their `card_split_value` is equal.
+pub fn card_split_value(card: &Card) -> u8 {
+    match &card.value {
+        CardValue::Ace => 11,
+        CardValue::King | CardValue::Queen | CardValue::Jack => 10,
+        CardValue::Value(v) => *v,
+    }
+}
+
 pub fn hand_value(cards: &[Card]) -> u8 {
     let mut ace_count = 0;
     let mut value = cards
@@ -240,12 +250,12 @@ pub fn resolve_outcomes(hand_values: &[HandState], outcomes: &[HandOutcome]) -> 
                                 Outcome::Lost(v)
                             }
                         }
-                        _ => {
-                            unreachable!("Have reached State::Active for a hand while resolving hand outcomes")
+                        State::Active | State::Surrendered => {
+                            unreachable!("Have reached State::Active or State::Surrendered for a hand while resolving hand outcomes")
                         }
                     }
                 },
-               _ => unreachable!("The dealer's hand is still active while attempting to resolve the hand outcomes")
+               State::Active | State::Surrendered => unreachable!("The dealer's hand is still active while attempting to resolve the hand outcomes")
             };
             (h.0, state)
         })

@@ -182,6 +182,11 @@ impl DataSource {
                 }
             }
             Action::Hold => State::Holding(value),
+            // DoubleDown, Split, and Surrender require additional context (balance, second hand, etc.)
+            // and are handled directly in the backend loop; these arms are unreachable via process_action.
+            Action::DoubleDown | Action::Split | Action::Surrender => {
+                unreachable!("DoubleDown/Split/Surrender must be handled by the backend loop, not process_action")
+            }
         }
     }
 
@@ -373,6 +378,7 @@ impl DataSource {
                         Outcome::Won(_) => player.balance += amount,
                         Outcome::Lost(_) => player.balance = player.balance.saturating_sub(amount),
                         Outcome::Push => {}
+                        Outcome::Surrendered => player.balance += amount / 2,
                     }
                 }
             }
@@ -408,13 +414,11 @@ impl DataSource {
         self.hands
             .retain(|h| !(h.dealer == game_id && h.id != h.dealer));
 
-        // Remove allocations for those hands
-        self.allocations
-            .retain(|a| !player_hand_ids.contains(&a.hand));
+        // Remove allocations for those hands AND the dealer's own allocations
+        self.allocations.retain(|a| a.dealer != game_id);
 
-        // Remove hand_states for those hands
-        self.hand_states
-            .retain(|hs| !player_hand_ids.contains(&hs.0));
+        // Remove hand_states for those hands AND the dealer hand_state
+        self.hand_states.retain(|hs| hs.1 != game_id);
 
         // Remove sequence entries for this game
         self.sequence.retain(|s| s.game_id != game_id);
@@ -463,6 +467,90 @@ impl DataSource {
                 };
             }
         });
+    }
+
+    /// Splits a hand mid-game. Returns the new hand's UUID on success, or None if the
+    /// split is not valid (insufficient funds, wrong card count, etc.).
+    ///
+    /// Steps:
+    /// 1. Validate player has enough balance; deduct immediately.
+    /// 2. Create a new Hand for the same player and push to self.hands.
+    /// 3. Reassign the 2nd CardAllocation for `hand_id` to the new hand.
+    /// 4. Insert a new Sequence entry at the position immediately after `hand_id`.
+    /// 5. Push a new Bet for the new hand (same amount/player/dealer).
+    /// 6. Deal 1 card to each of the two hands.
+    /// 7. Compute new hand_states for both and push any non-Active results.
+    /// 8. Return Some(new_hand_id).
+    pub fn split_hand(
+        &mut self,
+        hand_id: Uuid,
+        player_id: Uuid,
+        game_id: Uuid,
+        original_bet_amount: u32,
+    ) -> Option<Uuid> {
+        // 1. Deduct the extra bet immediately
+        let player = self.players.get_mut(&player_id)?;
+        if player.balance < original_bet_amount {
+            return None;
+        }
+        player.balance -= original_bet_amount;
+
+        // 2. Create the new hand
+        let new_hand_id = Uuid::new_v4();
+        self.hands.push(Hand {
+            id: new_hand_id,
+            player: player_id,
+            dealer: game_id,
+        });
+
+        // 3. Reassign the 2nd allocation for hand_id to the new hand
+        let second_alloc_pos = self
+            .allocations
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.hand == hand_id)
+            .nth(1)
+            .map(|(i, _)| i);
+        if let Some(pos) = second_alloc_pos {
+            self.allocations[pos].hand = new_hand_id;
+        }
+
+        // 4. Insert a new Sequence entry immediately after hand_id's position
+        let seq_pos = self
+            .sequence
+            .iter()
+            .position(|s| s.game_id == game_id && s.hand_id == hand_id);
+        let insert_at = seq_pos.map(|p| p + 1).unwrap_or(self.sequence.len());
+        self.sequence.insert(
+            insert_at,
+            Sequence {
+                game_id,
+                hand_id: new_hand_id,
+            },
+        );
+
+        // 5. Push a new Bet for the new hand
+        self.bets.push(Bet {
+            hand_id: new_hand_id,
+            player_id,
+            dealer_id: game_id,
+            amount: original_bet_amount,
+        });
+
+        // 6. Deal 1 card to each hand
+        let original_hand = self.hands.iter().find(|h| h.id == hand_id).cloned()?;
+        let new_hand = self.hands.iter().find(|h| h.id == new_hand_id).cloned()?;
+        let orig_allocs = self.allocate_cards(std::slice::from_ref(&original_hand), 1);
+        self.allocations.extend(orig_allocs);
+        let new_allocs = self.allocate_cards(std::slice::from_ref(&new_hand), 1);
+        self.allocations.extend(new_allocs);
+
+        // 7. Compute new hand_states for both hands
+        let both = vec![original_hand, new_hand];
+        let new_states = crate::utils::process_hand_states(&both, &self.allocations, &self.decks);
+        self.hand_states.extend(new_states);
+
+        Some(new_hand_id)
     }
 
     #[cfg(test)]
@@ -821,18 +909,13 @@ mod tests {
             .collect();
         assert!(player_hands.is_empty(), "no player hands should remain");
 
-        // Player hand allocations cleared (dealer allocations may remain)
-        let player_allocs = ds
+        // All allocations for this table (player and dealer) must be cleared
+        let all_allocs = ds
             .allocations
             .iter()
-            .filter(|a| {
-                ds.hands
-                    .iter()
-                    .filter(|h| h.dealer == game_id && h.id != h.dealer)
-                    .any(|h| h.id == a.hand)
-            })
+            .filter(|a| a.dealer == game_id)
             .count();
-        assert_eq!(player_allocs, 0, "player allocations must be empty");
+        assert_eq!(all_allocs, 0, "all allocations (incl. dealer) must be cleared");
         assert!(ds.hand_states.is_empty(), "hand_states must be empty");
         assert!(ds.sequence.is_empty(), "sequence must be empty");
         assert!(ds.active_hands.is_empty(), "active_hands must be empty");
