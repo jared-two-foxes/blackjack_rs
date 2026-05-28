@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 use uuid::Uuid;
 
 // --- Type Definitions ---
@@ -173,27 +174,60 @@ async fn leave_table(
 
 pub fn start_backend(
     actions: Arc<Mutex<Vec<crate::types::HandAction>>>,
-    ds: crate::data_source::DataSource,
+    ds: Arc<Mutex<crate::data_source::DataSource>>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         loop {
             // @todo: introduce a time to batch & throttle the calls? Rather than do them one at a time?
-            // ...existing code...
             // @todo: if there isnt an action for a particular user that should be acting then we should
             //        make them hold instead.
 
-            // Grab the mutex lock for the data source.
+            // Narrow lock on actions: drain actions that are ready to process.
+            // We release the actions lock before acquiring ds lock to avoid deadlock.
             let mut to_process = Vec::new();
-            if let Ok(mut actions) = actions.try_lock() {
-                let pivot = actions.partition_point(|a| ds.active_hands.contains(&a.0));
-                to_process = actions[pivot..].to_vec();
-                actions.truncate(pivot);
+            if let Ok(mut actions_guard) = actions.try_lock() {
+                // Narrow lock on ds: read active_hands only, then release.
+                let active_hands_snapshot = {
+                    let ds_guard = ds.lock().unwrap();
+                    ds_guard.active_hands.clone()
+                };
+                let (active_actions, remaining): (Vec<_>, Vec<_>) = actions_guard
+                    .drain(..)
+                    .partition(|a| active_hands_snapshot.contains(&a.0));
+                *actions_guard = remaining;
+                to_process = active_actions;
             }
 
-            let _ = process_user_actions(&to_process, &ds.hands, &ds.allocations, &ds.decks);
+            // Narrow lock on ds: read hands, allocations, decks for processing.
+            let (hands_snap, allocs_snap, decks_snap) = {
+                let ds_guard = ds.lock().unwrap();
+                (
+                    ds_guard.hands.clone(),
+                    ds_guard.allocations.clone(),
+                    ds_guard.decks.clone(),
+                )
+            };
+
+            let (new_allocations, new_hand_states) =
+                process_user_actions(&to_process, &hands_snap, &allocs_snap, &decks_snap);
+
+            // Write results back into DataSource only when there is something to write.
+            if !new_allocations.is_empty() || !new_hand_states.is_empty() {
+                let mut ds_guard = ds.lock().unwrap();
+                ds_guard.allocations.extend(new_allocations);
+                for hs in new_hand_states {
+                    if let Some(existing) = ds_guard.hand_states.iter_mut().find(|s| s.0 == hs.0) {
+                        *existing = hs;
+                    } else {
+                        ds_guard.hand_states.push(hs);
+                    }
+                }
+            }
 
             // maps hand_states to hand_outcome
             //let hand_outcomes = update_hand_outcomes(&hand_states, &ds.allocations, &ds.decks);
+
+            thread::sleep(Duration::from_millis(100));
         }
     })
 }
@@ -253,15 +287,11 @@ pub fn app_and_state() -> Router<()> {
     ds_inner.generate_tables(crate::data_source::DEFAULT_TABLE_COUNT);
     let ds = Arc::new(Mutex::new(ds_inner));
 
-    // Start backend processing
+    // Start backend processing — pass Arc clone so backend shares the same DataSource.
     let actions_clone = actions.clone();
-    let ds_lock = ds.lock().unwrap().clone();
-    start_backend(actions_clone, ds_lock);
+    start_backend(actions_clone, ds.clone());
 
-    let state = AppState {
-        actions,
-        ds,
-    };
+    let state = AppState { actions, ds };
 
     // Build Axum app
     Router::new()

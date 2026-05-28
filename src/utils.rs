@@ -143,7 +143,11 @@ pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
 //@note:
 //  This currently doesnt reference the deck to which the cards are being drawn from
 //  so we dont actually know if we've 'decked' or not.
-pub fn draw_cards(hand: &Hand, allocations: &[CardAllocation], count: usize) -> Vec<CardAllocation> {
+pub fn draw_cards(
+    hand: &Hand,
+    allocations: &[CardAllocation],
+    count: usize,
+) -> Vec<CardAllocation> {
     // Find the current card index into the deck, calculated by grabbing all of
     // the allocated cards and counting them
     let card_idx = allocations
@@ -153,12 +157,10 @@ pub fn draw_cards(hand: &Hand, allocations: &[CardAllocation], count: usize) -> 
 
     // for each card that is to be allocated, created a CardAllocation and return
     (0..count)
-        .map(|i| {
-            CardAllocation {
-                card_idx: card_idx + i,
-                dealer: hand.dealer,
-                hand: hand.id,
-            }
+        .map(|i| CardAllocation {
+            card_idx: card_idx + i,
+            dealer: hand.dealer,
+            hand: hand.id,
         })
         .collect()
 }
@@ -235,7 +237,11 @@ pub fn resolve_outcomes(hand_values: &[HandState], outcomes: &[HandOutcome]) -> 
 }
 
 fn get_game(current_hand_id: uuid::Uuid, hands: &[Hand]) -> uuid::Uuid {
-    hands.iter().find(|h| h.id == current_hand_id).expect("passed an invalid current_hand_id").dealer
+    hands
+        .iter()
+        .find(|h| h.id == current_hand_id)
+        .expect("passed an invalid current_hand_id")
+        .dealer
 }
 
 // @todo: this should really be receiving the game_id rather than the turn_order and
