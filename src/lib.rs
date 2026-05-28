@@ -1,5 +1,5 @@
 // --- Module declarations ---
-mod data_source;
+pub mod data_source;
 pub mod types;
 pub mod utils;
 
@@ -247,7 +247,11 @@ fn process_user_actions(
 
 pub fn app_and_state() -> Router<()> {
     let actions = Arc::new(Mutex::new(Vec::new()));
-    let ds = Arc::new(Mutex::new(crate::data_source::DataSource::default()));
+    let mut ds_inner = crate::data_source::DataSource::default();
+
+    // Generate tables at startup
+    ds_inner.generate_tables(crate::data_source::DEFAULT_TABLE_COUNT);
+    let ds = Arc::new(Mutex::new(ds_inner));
 
     // Start backend processing
     let actions_clone = actions.clone();
@@ -255,8 +259,8 @@ pub fn app_and_state() -> Router<()> {
     start_backend(actions_clone, ds_lock);
 
     let state = AppState {
-        actions: actions,
-        ds: ds,
+        actions,
+        ds,
     };
 
     // Build Axum app

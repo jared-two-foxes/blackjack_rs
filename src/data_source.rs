@@ -1,3 +1,6 @@
+/// Number of tables to generate at startup
+pub const DEFAULT_TABLE_COUNT: usize = 8;
+
 use log::warn;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -25,6 +28,15 @@ pub struct DataSource {
 }
 
 impl DataSource {
+    /// Generate N tables (games) at startup, returning their IDs
+    pub fn generate_tables(&mut self, count: usize) -> Vec<Uuid> {
+        let mut ids = Vec::with_capacity(count);
+        for _ in 0..count {
+            ids.push(self.add_game());
+        }
+        ids
+    }
+
     /// Removes a player from a table. Returns the hand id if found and removed.
     pub fn remove_player(&mut self, dealer_id: Uuid, player_id: Uuid) -> Option<Uuid> {
         if let Some(pos) = self
