@@ -38,5 +38,8 @@ async fn test_get_table_state_returns_200_and_hands_field() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let state: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(state.get("hands").is_some(), "response must contain 'hands' field");
+    assert!(
+        state.get("hands").is_some(),
+        "response must contain 'hands' field"
+    );
 }

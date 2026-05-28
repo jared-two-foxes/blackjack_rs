@@ -123,25 +123,30 @@ async fn get_table_state(
     let ds = state.ds.lock().unwrap();
 
     // Game state string + seconds_remaining
-    let (game_state_str, seconds_remaining, game_state_enum) = match ds.get_game_states().get(&table_id) {
-        Some(GameState::Waiting) => ("waiting".to_string(), None, GameState::Waiting),
-        Some(GameState::Countdown { started_at }) => {
-            let elapsed = started_at.elapsed().as_secs();
-            let remaining = effective_countdown_secs().saturating_sub(elapsed);
-            (
-                "countdown".to_string(),
-                Some(remaining),
-                GameState::Countdown { started_at: *started_at },
-            )
-        }
-        Some(GameState::Active) => ("active".to_string(), None, GameState::Active),
-        Some(GameState::Resolving { started_at }) => (
-            "resolving".to_string(),
-            None,
-            GameState::Resolving { started_at: *started_at },
-        ),
-        None => ("unknown".to_string(), None, GameState::Waiting),
-    };
+    let (game_state_str, seconds_remaining, game_state_enum) =
+        match ds.get_game_states().get(&table_id) {
+            Some(GameState::Waiting) => ("waiting".to_string(), None, GameState::Waiting),
+            Some(GameState::Countdown { started_at }) => {
+                let elapsed = started_at.elapsed().as_secs();
+                let remaining = effective_countdown_secs().saturating_sub(elapsed);
+                (
+                    "countdown".to_string(),
+                    Some(remaining),
+                    GameState::Countdown {
+                        started_at: *started_at,
+                    },
+                )
+            }
+            Some(GameState::Active) => ("active".to_string(), None, GameState::Active),
+            Some(GameState::Resolving { started_at }) => (
+                "resolving".to_string(),
+                None,
+                GameState::Resolving {
+                    started_at: *started_at,
+                },
+            ),
+            None => ("unknown".to_string(), None, GameState::Waiting),
+        };
 
     // Build HandInfo for each hand at this table
     let hands: Vec<HandInfo> = ds
@@ -447,6 +452,9 @@ pub fn start_backend(
 
             // ── Step 2: Process player actions ──────────────────────────────────────
             // Hold the ds lock for the rest of the tick (Steps 2–6).
+            // Declared outside the ds_guard block so Step 5b can read it after
+            // ds_guard is released.
+            let mut stale_hand_ids: Vec<Uuid> = Vec::new();
             {
                 let mut ds_guard = ds.lock().unwrap();
 
@@ -525,7 +533,9 @@ pub fn start_backend(
                                 }
                                 player.balance -= original_amount;
                             }
-                            if let Some(bet) = ds_guard.bets.iter_mut().find(|b| b.hand_id == *hand_id) {
+                            if let Some(bet) =
+                                ds_guard.bets.iter_mut().find(|b| b.hand_id == *hand_id)
+                            {
                                 bet.amount *= 2;
                             }
                             // Deal exactly 1 card
@@ -564,9 +574,11 @@ pub fn start_backend(
                             {
                                 *existing = (*hand_id, hand.dealer, State::Surrendered);
                             } else {
-                                ds_guard
-                                    .hand_states
-                                    .push((*hand_id, hand.dealer, State::Surrendered));
+                                ds_guard.hand_states.push((
+                                    *hand_id,
+                                    hand.dealer,
+                                    State::Surrendered,
+                                ));
                             }
                             // Pre-insert outcome so resolve_outcomes skips this hand
                             ds_guard.outcomes.push((*hand_id, Outcome::Surrendered));
@@ -602,7 +614,12 @@ pub fn start_backend(
                                 None => continue,
                             };
                             // Execute split — do NOT call resolve_turn; player continues on original hand
-                            ds_guard.split_hand(*hand_id, hand.player, hand.dealer, original_amount);
+                            ds_guard.split_hand(
+                                *hand_id,
+                                hand.player,
+                                hand.dealer,
+                                original_amount,
+                            );
                             continue; // skip the resolve_turn call at the bottom of this loop
                         }
                     }
@@ -686,15 +703,38 @@ pub fn start_backend(
                 }
 
                 // ── Step 5: Resolving check ──────────────────────────────────────────
+                // Collect hand IDs into the outer `stale_hand_ids` (declared before
+                // this block) so they are available for purging after ds_guard drops.
                 for (game_id, state) in &game_states_snap {
                     if let GameState::Resolving { started_at } = state {
                         if started_at.elapsed().as_secs() >= effective_resolving_secs() {
+                            // Snapshot all hand IDs (player + dealer) before they are removed
+                            let game_hand_ids: Vec<Uuid> = ds_guard
+                                .hands
+                                .iter()
+                                .filter(|h| h.dealer == *game_id)
+                                .map(|h| h.id)
+                                .collect();
+                            stale_hand_ids.extend(game_hand_ids);
+                            stale_hand_ids.push(*game_id); // dealer self-hand
+
                             ds_guard.apply_betting_outcomes();
                             ds_guard.reset_game(*game_id);
                         }
                     }
                 }
             } // ds_guard released
+
+            // ── Step 5b: Purge stale actions ─────────────────────────────────────────
+            // Remove HashMap entries whose hand UUIDs no longer exist so they do not
+            // accumulate across rounds (harmless but leaks memory otherwise).
+            if !stale_hand_ids.is_empty() {
+                if let Ok(mut actions_guard) = actions.try_lock() {
+                    for id in &stale_hand_ids {
+                        actions_guard.remove(id);
+                    }
+                }
+            }
 
             // ── Step 6: Sleep ────────────────────────────────────────────────────────
             thread::sleep(Duration::from_millis(100));
@@ -716,8 +756,8 @@ async fn debug_set_deck(
 }
 
 pub fn app_and_state() -> Router<()> {
-        let actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+    let actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut ds_inner = crate::data_source::DataSource::default();
 
     // Generate tables at startup
@@ -1032,8 +1072,8 @@ mod tests {
         ds_inner.place_bet(player_id, table_id, 1).unwrap();
         ds_inner.start_game(table_id); // transitions to Active
 
-    let actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+        let actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let ds = Arc::new(Mutex::new(ds_inner));
 
         let state = AppState {

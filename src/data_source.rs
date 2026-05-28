@@ -915,7 +915,10 @@ mod tests {
             .iter()
             .filter(|a| a.dealer == game_id)
             .count();
-        assert_eq!(all_allocs, 0, "all allocations (incl. dealer) must be cleared");
+        assert_eq!(
+            all_allocs, 0,
+            "all allocations (incl. dealer) must be cleared"
+        );
         assert!(ds.hand_states.is_empty(), "hand_states must be empty");
         assert!(ds.sequence.is_empty(), "sequence must be empty");
         assert!(ds.active_hands.is_empty(), "active_hands must be empty");

@@ -834,7 +834,9 @@ async fn scenario_multi_round_no_crash() -> Result<(), String> {
 
         let (bet_status, _) = place_bet(&base, &client, &table_id, &player_id, 100).await?;
         if bet_status != 200 {
-            return Err(format!("round {round}: bet failed with status {bet_status}"));
+            return Err(format!(
+                "round {round}: bet failed with status {bet_status}"
+            ));
         }
 
         poll_state(&base, &client, &table_id, |s| s["game_state"] == "active").await?;

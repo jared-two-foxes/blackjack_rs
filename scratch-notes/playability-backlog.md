@@ -44,24 +44,24 @@ can be done in parallel with Phase 3 (TUI Client).
 
 ### 1a. `src/types.rs`
 
-- [ ] **Add `Action::DoubleDown`, `Action::Split`, `Action::Surrender`**
+- [x] **Add `Action::DoubleDown`, `Action::Split`, `Action::Surrender`**
   ```rust
   pub enum Action { Hit, Hold, DoubleDown, Split, Surrender }
   ```
 
-- [ ] **Add `State::Surrendered`**
+- [x] **Add `State::Surrendered`**
   ```rust
   pub enum State { Active, Holding(u8), Bust(u8), BlackJack, Surrendered }
   ```
 
-- [ ] **Add `Outcome::Surrendered`**
+- [x] **Add `Outcome::Surrendered`**
   ```rust
   pub enum Outcome { Won(u8), Lost(u8), Push, Surrendered }
   ```
 
 ### 1b. `src/data_source.rs`
 
-- [ ] **Fix deck exhaustion bug in `reset_game`**
+- [x] **Fix deck exhaustion bug in `reset_game`**
   Current code only clears player hand allocations and player hand_states, leaving
   the dealer's entries accumulating across rounds.
 
@@ -79,22 +79,25 @@ can be done in parallel with Phase 3 (TUI Client).
   *"Player hand allocations cleared (dealer allocations may remain)"* is wrong after
   this fix — assert that ALL allocations for the game are cleared.
 
-- [ ] **Add `pending_actions: HashMap<Uuid, Action>` to `DataSource`**
+- [x] **Add `pending_actions: HashMap<Uuid, Action>` to `DataSource`**
   One pending action per hand_id. Replaces the shared `Vec<HandAction>` in `AppState`
   for the per-hand queuing contract. Note: the `Arc<Mutex<...>>` for the action queue
   lives in `lib.rs`/`AppState` — this field is for documentation of the logical model;
   see the `lib.rs` tasks for the actual struct change.
 
-- [ ] **Clear pending actions in `reset_game`**
+- [x] **Clear pending actions in `reset_game`**
   After the existing clear operations, remove pending action entries for all hands
   belonging to this game (both player and dealer hands).
+  Implemented in `lib.rs` backend loop Step 5b: hand IDs are collected before
+  `reset_game` is called (while ds_guard is held), then purged from the `actions`
+  HashMap after ds_guard is released to avoid locking two Mutexes in the same scope.
 
-- [ ] **Add `Outcome::Surrendered` case to `apply_betting_outcomes`**
+- [x] **Add `Outcome::Surrendered` case to `apply_betting_outcomes`**
   ```rust
   Outcome::Surrendered => player.balance += amount / 2,
   ```
 
-- [ ] **Add `split_hand` method to `DataSource`**
+- [x] **Add `split_hand` method to `DataSource`**
   Signature:
   ```rust
   pub fn split_hand(
@@ -117,7 +120,7 @@ can be done in parallel with Phase 3 (TUI Client).
 
 ### 1c. `src/utils.rs`
 
-- [ ] **Add `card_split_value` helper**
+- [x] **Add `card_split_value` helper**
   Returns a comparable u8 "category" for Split eligibility:
   ```rust
   pub fn card_split_value(card: &Card) -> u8 {
@@ -130,7 +133,7 @@ can be done in parallel with Phase 3 (TUI Client).
   ```
   Two cards are splittable when `card_split_value(a) == card_split_value(b)`.
 
-- [ ] **Update `resolve_outcomes` unreachable arms to name `State::Surrendered`**
+- [x] **Update `resolve_outcomes` unreachable arms to name `State::Surrendered`**
   The outer match on the dealer's state and the inner match on the player's state both
   have `_ => unreachable!(...)` catch-alls. Surrendered hands are pre-filtered (outcome
   pre-inserted before `resolve_turn`) so these arms will never be hit in practice, but
@@ -141,12 +144,12 @@ can be done in parallel with Phase 3 (TUI Client).
 
 ### 1d. `src/lib.rs`
 
-- [ ] **Add new `ActionMsg` variants**
+- [x] **Add new `ActionMsg` variants**
   ```rust
   pub enum ActionMsg { Hit, Hold, DoubleDown, Split, Surrender }
   ```
 
-- [ ] **Redesign shared action queue: `Vec<HandAction>` → `HashMap<Uuid, Action>`**
+- [x] **Redesign shared action queue: `Vec<HandAction>` → `HashMap<Uuid, Action>`**
   In `AppState`:
   ```rust
   pub actions: Arc<Mutex<HashMap<Uuid, crate::types::Action>>>,
@@ -154,7 +157,7 @@ can be done in parallel with Phase 3 (TUI Client).
   Update `app_and_state` to initialise `Arc::new(Mutex::new(HashMap::new()))`.
   Update `start_backend` signature accordingly.
 
-- [ ] **Update `submit_action` handler — validation + 202/400 response**
+- [x] **Update `submit_action` handler — validation + 202/400 response**
   New logic:
   1. Lock `ds` (read-only borrow is fine).
   2. Find hand by `msg.hand_id` in `ds.hands`; return `400 "hand not found"` if missing.
@@ -163,7 +166,7 @@ can be done in parallel with Phase 3 (TUI Client).
   5. Map `ActionMsg` → `Action`; insert into `state.actions` HashMap (overwrites any prior pending action for this hand).
   6. Return `(StatusCode::ACCEPTED, "Action queued")`.
 
-- [ ] **Update backend loop Step 1 — drain with HashMap**
+- [x] **Update backend loop Step 1 — drain with HashMap**
   Replace the Vec drain+partition with:
   ```rust
   if let Ok(mut actions_guard) = actions.try_lock() {
@@ -176,7 +179,7 @@ can be done in parallel with Phase 3 (TUI Client).
   }
   ```
 
-- [ ] **Update backend loop Step 2 — add DoubleDown arm**
+- [x] **Update backend loop Step 2 — add DoubleDown arm**
   After the `Action::Hold` arm:
   ```
   Action::DoubleDown:
@@ -193,7 +196,7 @@ can be done in parallel with Phase 3 (TUI Client).
    10. resolve_turn().
   ```
 
-- [ ] **Update backend loop Step 2 — add Surrender arm**
+- [x] **Update backend loop Step 2 — add Surrender arm**
   ```
   Action::Surrender:
     1. Count allocations for hand_id — must be exactly 2.
@@ -202,7 +205,7 @@ can be done in parallel with Phase 3 (TUI Client).
     4. resolve_turn().
   ```
 
-- [ ] **Update backend loop Step 2 — add Split arm**
+- [x] **Update backend loop Step 2 — add Split arm**
   ```
   Action::Split:
     1. Count allocations for hand_id — must be exactly 2.
@@ -212,7 +215,7 @@ can be done in parallel with Phase 3 (TUI Client).
     5. Do NOT call resolve_turn() — player continues playing the original hand.
   ```
 
-- [ ] **Add `active_hands` to `TableState` response struct**
+- [x] **Add `active_hands` to `TableState` response struct**
   ```rust
   pub struct TableState {
       // ... existing fields ...
@@ -221,7 +224,7 @@ can be done in parallel with Phase 3 (TUI Client).
   ```
   Populate in `get_table_state`: filter `ds.active_hands` to hands whose dealer == table_id.
 
-- [ ] **Hide dealer hole card in `get_table_state`**
+- [x] **Hide dealer hole card in `get_table_state`**
   When building `HandInfo` for a dealer hand (`hand.id == hand.dealer`) and the game
   state is `GameState::Active`, truncate the cards vec to 1 (face-up card only):
   ```rust
@@ -236,38 +239,38 @@ can be done in parallel with Phase 3 (TUI Client).
   };
   ```
 
-- [ ] **Serialize new `State::Surrendered` in `get_table_state`**
+- [x] **Serialize new `State::Surrendered` in `get_table_state`**
   ```rust
   State::Surrendered => "surrendered".to_string(),
   ```
 
-- [ ] **Serialize new `Outcome::Surrendered` in `get_table_state`**
+- [x] **Serialize new `Outcome::Surrendered` in `get_table_state`**
   ```rust
   Outcome::Surrendered => "surrendered".to_string(),
   ```
 
 ### 1e. `src/bin/harness.rs`
 
-- [ ] **Add harness scenario: `test_double_down_win`**
+- [x] **Add harness scenario: `test_double_down_win`**
   Rig deck so player gets 10+2 (12), dealer gets low cards. Player submits DoubleDown.
   Assert: one card dealt, bet doubled, player ends with a Holding state, outcome is Won,
   player balance reflects 1:1 payout on doubled bet.
 
-- [ ] **Add harness scenario: `test_double_down_bust`**
+- [x] **Add harness scenario: `test_double_down_bust`**
   Rig deck so player gets 10+6 (16), 3rd card is a 10 → bust.
   Assert: State::Bust, Outcome::Lost, balance deducted for doubled bet.
 
-- [ ] **Add harness scenario: `test_surrender`**
+- [x] **Add harness scenario: `test_surrender`**
   Player receives 2 cards, immediately submits Surrender.
   Assert: Outcome::Surrendered, balance increased by half the original bet,
   round resolves without waiting for the dealer.
 
-- [ ] **Add harness scenario: `test_split`**
+- [x] **Add harness scenario: `test_split`**
   Rig deck to deal player two 8s. Player submits Split.
   Assert: two hands in sequence after split, each receives a new card, both play to
   completion, outcomes assigned to both hands, balances adjusted.
 
-- [ ] **Add harness scenario: `test_multi_round_no_crash`**
+- [x] **Add harness scenario: `test_multi_round_no_crash`**
   Play 3 consecutive rounds on the same table (same dealer/game_id).
   Assert: no panic, all rounds complete, deck is reshuffled between rounds,
   outcomes and bets are cleared between rounds.
@@ -299,7 +302,7 @@ client/src/
 
 ### `client/src/types.rs`
 
-- [ ] **Define local JSON types** (mirror server API — no shared crate dependency)
+- [x] **Define local JSON types** (mirror server API — no shared crate dependency)
   ```rust
   pub struct TableState {
       pub game_state: String,
@@ -319,7 +322,7 @@ client/src/
 
 ### `client/src/api.rs`
 
-- [ ] **Implement all HTTP client functions** (all async, return `Result<T, reqwest::Error>`)
+- [x] **Implement all HTTP client functions** (all async, return `Result<T, reqwest::Error>`)
   ```rust
   pub async fn create_player(base: &str) -> Result<(Uuid, u32)>
   pub async fn get_player(base: &str, id: Uuid) -> Result<(Uuid, u32)>
@@ -333,7 +336,7 @@ client/src/
 
 ### `client/src/state.rs`
 
-- [ ] **Define `Screen` enum and `App` struct**
+- [x] **Define `Screen` enum and `App` struct`**
   ```rust
   pub enum Screen {
       Lobby,
@@ -354,7 +357,7 @@ client/src/
   }
   ```
 
-- [ ] **Implement screen transition helpers**
+- [x] **Implement screen transition helpers**
   ```
   Lobby → Betting:    join_table succeeds
   Betting → Game:     poll sees game_state == "active"
@@ -362,7 +365,7 @@ client/src/
   Result → Lobby:     Enter or Q keypress
   ```
 
-- [ ] **Implement `available_actions` helper**
+- [x] **Implement `available_actions` helper**
   Given the player's `HandInfo`, current bets, and balance — return which `ActionMsg`
   variants are eligible:
   - `Hit`, `Hold`: always if hand state is `None` (still active)
@@ -370,7 +373,7 @@ client/src/
   - `Split`: active + exactly 2 cards + both cards same split-category value + balance >= bet
   - `Surrender`: active + exactly 2 cards
 
-- [ ] **Implement `card_display` helper**
+- [x] **Implement `card_display` helper**
   Format a card as inline text with Unicode suit symbol:
   ```
   Ace of Spades   → "A♠"
@@ -381,17 +384,17 @@ client/src/
 
 ### `client/src/ui.rs`
 
-- [ ] **Implement `render_lobby` function**
+- [x] **Implement `render_lobby` function**
   - Table list with id (truncated), state, player count, countdown timer.
   - Highlight selected row.
   - Bottom bar: `[↑↓] navigate  [Enter] join  [Q] quit`.
 
-- [ ] **Implement `render_betting` function**
+- [x] **Implement `render_betting` function**
   - Show table ID, countdown timer (`seconds_remaining`), player balance.
   - Text input field for bet amount (digits only, max = balance).
   - Bottom bar: `[Enter] confirm  [Esc] leave table`.
 
-- [ ] **Implement `render_game` function**
+- [x] **Implement `render_game` function**
   - Dealer panel: show face-up card + `??` (hole card) during active state;
     show both cards once game_state is no longer "active".
     Detect dealer hand by `hand.player == hand.dealer`.
@@ -402,12 +405,12 @@ client/src/
     Show `★ [action] staged` when `app.action_staged` is set.
   - Top-right: balance.
 
-- [ ] **Implement `render_result` function**
+- [x] **Implement `render_result` function**
   - Show outcome for the player's hand(s): "Won +150", "Lost -100", "Push", "Surrendered -50".
   - Show new balance.
   - Bottom bar: `[Enter] play again  [Q] leave table`.
 
-- [ ] **Implement top-level `render` dispatcher**
+- [x] **Implement top-level `render` dispatcher**
   ```rust
   pub fn render(f: &mut Frame, app: &App) {
       match &app.screen {
@@ -421,23 +424,23 @@ client/src/
 
 ### `client/src/main.rs`
 
-- [ ] **Parse `--server` CLI argument**
+- [x] **Parse `--server` CLI argument**
   Default: `http://127.0.0.1:3000`. Use `clap::Parser`.
 
-- [ ] **Set up terminal (crossterm)**
+- [x] **Set up terminal (crossterm)**
   Enable raw mode, enter alternate screen. Register panic hook and `Drop` impl to
   restore terminal state so the shell is not broken on crash.
 
-- [ ] **Register player on startup**
+- [x] **Register player on startup**
   Call `api::create_player` and store `player_id` and `balance` in `App`.
 
-- [ ] **Implement main event loop**
+- [x] **Implement main event loop**
   Use `tokio::select!` with two branches:
   1. **Tick (500ms)**: poll server for updated state depending on current screen.
      Auto-transition screens based on `game_state` changes.
   2. **Keyboard**: read crossterm event; dispatch to a `handle_input` function.
 
-- [ ] **Implement `handle_input` function**
+- [x] **Implement `handle_input` function**
   Match on `(app.screen, key_event)`:
   - Lobby: ↑↓ change `selected_table`; Enter → `join_table` and transition.
   - Betting: digits append to `bet_input`; Backspace deletes; Enter → `place_bet`.
