@@ -6,6 +6,20 @@ pub const MAX_PLAYERS_PER_TABLE: usize = 6;
 pub const COUNTDOWN_DURATION_SECS: u64 = 30;
 pub const RESOLVING_DISPLAY_SECS: u64 = 10;
 
+pub fn effective_countdown_secs() -> u64 {
+    std::env::var("BLACKJACK_COUNTDOWN_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(COUNTDOWN_DURATION_SECS)
+}
+
+pub fn effective_resolving_secs() -> u64 {
+    std::env::var("BLACKJACK_RESOLVING_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(RESOLVING_DISPLAY_SECS)
+}
+
 use log::warn;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -106,10 +120,20 @@ impl DataSource {
     }
 
     pub fn allocate_cards(&mut self, hands: &[Hand], count: usize) -> Vec<CardAllocation> {
-        hands
-            .iter()
-            .flat_map(|h| draw_cards(h, &self.allocations, count))
-            .collect()
+        let mut new_allocations: Vec<CardAllocation> = Vec::new();
+        for h in hands {
+            // Pass both existing allocations and those already assigned this
+            // batch so each hand gets a unique, non-overlapping card index.
+            let combined: Vec<CardAllocation> = self
+                .allocations
+                .iter()
+                .chain(new_allocations.iter())
+                .cloned()
+                .collect();
+            let cards = draw_cards(h, &combined, count);
+            new_allocations.extend(cards);
+        }
+        new_allocations
     }
 
     //@todo: I think this should this return a uuid; reasons 2 fold, we probably

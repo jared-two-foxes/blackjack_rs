@@ -5,7 +5,7 @@ pub mod utils;
 
 // --- External Crates and Prelude Imports ---
 use crate::data_source::{
-    GameState, COUNTDOWN_DURATION_SECS, MAX_PLAYERS_PER_TABLE, RESOLVING_DISPLAY_SECS,
+    effective_countdown_secs, effective_resolving_secs, GameState, MAX_PLAYERS_PER_TABLE,
 };
 use crate::types::{Action, Outcome, State};
 use crate::utils::hand_value;
@@ -122,7 +122,7 @@ async fn get_table_state(
         Some(GameState::Waiting) => ("waiting".to_string(), None),
         Some(GameState::Countdown { started_at }) => {
             let elapsed = started_at.elapsed().as_secs();
-            let remaining = COUNTDOWN_DURATION_SECS.saturating_sub(elapsed);
+            let remaining = effective_countdown_secs().saturating_sub(elapsed);
             ("countdown".to_string(), Some(remaining))
         }
         Some(GameState::Active) => ("active".to_string(), None),
@@ -512,7 +512,7 @@ pub fn start_backend(
                 for (game_id, state) in &game_states_snap {
                     if let GameState::Countdown { started_at } = state {
                         let elapsed = started_at.elapsed().as_secs();
-                        if elapsed >= COUNTDOWN_DURATION_SECS
+                        if elapsed >= effective_countdown_secs()
                             || ds_guard.player_count(*game_id) >= MAX_PLAYERS_PER_TABLE
                         {
                             ds_guard.start_game(*game_id);
@@ -523,7 +523,7 @@ pub fn start_backend(
                 // ── Step 5: Resolving check ──────────────────────────────────────────
                 for (game_id, state) in &game_states_snap {
                     if let GameState::Resolving { started_at } = state {
-                        if started_at.elapsed().as_secs() >= RESOLVING_DISPLAY_SECS {
+                        if started_at.elapsed().as_secs() >= effective_resolving_secs() {
                             ds_guard.apply_betting_outcomes();
                             ds_guard.reset_game(*game_id);
                         }
@@ -538,6 +538,17 @@ pub fn start_backend(
 }
 
 // --- App Construction ---
+
+#[cfg(feature = "harness")]
+async fn debug_set_deck(
+    AxumState(state): AxumState<AppState>,
+    Path(table_id): Path<Uuid>,
+    AxumJson(deck): AxumJson<crate::types::Deck>,
+) -> axum::http::StatusCode {
+    let mut ds = state.ds.lock().unwrap();
+    ds.set_deck(table_id, deck);
+    axum::http::StatusCode::OK
+}
 
 pub fn app_and_state() -> Router<()> {
     let actions = Arc::new(Mutex::new(Vec::new()));
@@ -554,7 +565,7 @@ pub fn app_and_state() -> Router<()> {
     let state = AppState { actions, ds };
 
     // Build Axum app
-    Router::new()
+    let router = Router::new()
         .route("/action", post(submit_action))
         .route("/table/:table_id", get(get_table_state))
         .route("/table/:table_id/join", post(join_table))
@@ -562,8 +573,12 @@ pub fn app_and_state() -> Router<()> {
         .route("/player", post(create_player))
         .route("/player/:id", get(get_player))
         .route("/tables", get(get_tables))
-        .route("/table/:id/bet", post(place_bet_handler))
-        .with_state(state)
+        .route("/table/:id/bet", post(place_bet_handler));
+
+    #[cfg(feature = "harness")]
+    let router = router.route("/debug/set-deck/:table_id", post(debug_set_deck));
+
+    router.with_state(state)
 }
 
 #[cfg(test)]

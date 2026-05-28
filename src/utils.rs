@@ -127,7 +127,7 @@ pub fn new_deck() -> Deck {
 /// Returns the number of seconds remaining in a countdown phase.
 /// Returns 0 if the countdown has already elapsed.
 pub fn countdown_seconds_remaining(started_at: &std::time::Instant) -> u64 {
-    crate::data_source::COUNTDOWN_DURATION_SECS.saturating_sub(started_at.elapsed().as_secs())
+    crate::data_source::effective_countdown_secs().saturating_sub(started_at.elapsed().as_secs())
 }
 
 /// Shuffles a deck in-place using a thread-local RNG.
@@ -136,7 +136,7 @@ pub fn shuffle_deck(deck: &mut Deck) {
 }
 
 pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
-    hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
+    !hand_states.iter().any(|hs| hs.0 == hand_id)
 }
 
 //@note:
