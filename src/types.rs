@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Suit {
     Hearts,
     Diamonds,
@@ -27,7 +27,7 @@ impl fmt::Display for Suit {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CardValue {
     Ace,
     King,
@@ -54,7 +54,7 @@ impl fmt::Display for CardValue {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Card {
     pub suit: Suit,
     pub value: CardValue,
@@ -127,6 +127,96 @@ pub type HandState = (Uuid /*this*/, Uuid /*dealer*/, State);
 pub enum Outcome {
     Won(u8),
     Lost(u8),
+    Push,
 }
 
 pub type HandOutcome = (Uuid, Outcome);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BetError {
+    BelowMinimum,
+    InsufficientFunds,
+    WrongGameState,
+    DuplicateBet,
+    PlayerNotFound,
+}
+
+impl std::fmt::Display for BetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match self {
+            BetError::PlayerNotFound => "player not found",
+            BetError::BelowMinimum => "bet below minimum",
+            BetError::InsufficientFunds => "insufficient funds",
+            BetError::WrongGameState => "table is not accepting bets",
+            BetError::DuplicateBet => "player already has a bet at this table",
+        };
+        write!(f, "{}", msg)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Player {
+    pub id: Uuid,
+    pub balance: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bet {
+    pub hand_id: Uuid,
+    pub player_id: Uuid,
+    pub dealer_id: Uuid,
+    pub amount: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outcome_push_equality() {
+        assert_eq!(Outcome::Push, Outcome::Push);
+        assert_ne!(Outcome::Push, Outcome::Won(1));
+    }
+
+    #[test]
+    fn card_serde_round_trip() {
+        let original = Card::new(Suit::Hearts, CardValue::Ace);
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let restored: Card = serde_json::from_str(&json).expect("deserialize failed");
+        // Verify suit and value match via their Debug representations
+        assert_eq!(
+            format!("{:?}", original.suit),
+            format!("{:?}", restored.suit)
+        );
+        assert_eq!(
+            format!("{:?}", original.value),
+            format!("{:?}", restored.value)
+        );
+    }
+
+    #[test]
+    fn player_serde_round_trip() {
+        let id = Uuid::new_v4();
+        let original = Player { id, balance: 500 };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let restored: Player = serde_json::from_str(&json).expect("deserialize failed");
+        assert_eq!(original.id, restored.id);
+        assert_eq!(original.balance, restored.balance);
+    }
+
+    #[test]
+    fn bet_serde_round_trip() {
+        let original = Bet {
+            hand_id: Uuid::new_v4(),
+            player_id: Uuid::new_v4(),
+            dealer_id: Uuid::new_v4(),
+            amount: 100,
+        };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let restored: Bet = serde_json::from_str(&json).expect("deserialize failed");
+        assert_eq!(original.hand_id, restored.hand_id);
+        assert_eq!(original.player_id, restored.player_id);
+        assert_eq!(original.dealer_id, restored.dealer_id);
+        assert_eq!(original.amount, restored.amount);
+    }
+}

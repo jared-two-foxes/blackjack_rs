@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 use crate::types::*;
 
 pub fn get_dealer(hand_id: Uuid, hands: &[Hand]) -> Uuid {
@@ -121,6 +124,17 @@ pub fn new_deck() -> Deck {
     ]
 }
 
+/// Returns the number of seconds remaining in a countdown phase.
+/// Returns 0 if the countdown has already elapsed.
+pub fn countdown_seconds_remaining(started_at: &std::time::Instant) -> u64 {
+    crate::data_source::COUNTDOWN_DURATION_SECS.saturating_sub(started_at.elapsed().as_secs())
+}
+
+/// Shuffles a deck in-place using a thread-local RNG.
+pub fn shuffle_deck(deck: &mut Deck) {
+    deck.shuffle(&mut thread_rng());
+}
+
 pub fn is_hand_active(hand_id: Uuid, hand_states: &[HandState]) -> bool {
     hand_states.iter().find(|&hs| hs.0 == hand_id).is_none()
 }
@@ -220,6 +234,8 @@ pub fn resolve_outcomes(hand_values: &[HandState], outcomes: &[HandOutcome]) -> 
                         State::Holding(v) => {
                             if v > dealer_value {
                                 Outcome::Won(v)
+                            } else if v == dealer_value {
+                                Outcome::Push
                             } else {
                                 Outcome::Lost(v)
                             }
@@ -272,3 +288,78 @@ pub fn determine_next_hand(
 // turn sequence; the order in which players take turns (with the dealer going last)
 // action validation; an action is only balid if its that players turn to go.
 // Rules engine?
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_outcomes_push_when_equal_values() {
+        let dealer_id = Uuid::new_v4();
+        let player_id = Uuid::new_v4();
+        // Both dealer and player holding 17
+        let hand_states: Vec<HandState> = vec![
+            (dealer_id, dealer_id, State::Holding(17)), // dealer's self-hand
+            (player_id, dealer_id, State::Holding(17)), // player's hand
+        ];
+        let outcomes = resolve_outcomes(&hand_states, &[]);
+        // The dealer's self-hand also resolves (push against itself), so we get 2 outcomes.
+        assert_eq!(outcomes.len(), 2);
+        let player_outcome = outcomes
+            .iter()
+            .find(|(id, _)| *id == player_id)
+            .expect("player outcome missing");
+        assert!(matches!(player_outcome.1, Outcome::Push));
+    }
+
+    #[test]
+    fn resolve_outcomes_no_push_when_player_wins() {
+        let dealer_id = Uuid::new_v4();
+        let player_id = Uuid::new_v4();
+        let hand_states: Vec<HandState> = vec![
+            (dealer_id, dealer_id, State::Holding(16)),
+            (player_id, dealer_id, State::Holding(19)),
+        ];
+        let outcomes = resolve_outcomes(&hand_states, &[]);
+        // 2 outcomes: dealer self-hand (push) + player hand (won)
+        assert_eq!(outcomes.len(), 2);
+        let player_outcome = outcomes
+            .iter()
+            .find(|(id, _)| *id == player_id)
+            .expect("player outcome missing");
+        assert!(matches!(player_outcome.1, Outcome::Won(_)));
+    }
+
+    #[test]
+    fn resolve_outcomes_lost_when_dealer_wins() {
+        let dealer_id = Uuid::new_v4();
+        let player_id = Uuid::new_v4();
+        let hand_states: Vec<HandState> = vec![
+            (dealer_id, dealer_id, State::Holding(20)),
+            (player_id, dealer_id, State::Holding(17)),
+        ];
+        let outcomes = resolve_outcomes(&hand_states, &[]);
+        // 2 outcomes: dealer self-hand (push) + player hand (lost)
+        assert_eq!(outcomes.len(), 2);
+        let player_outcome = outcomes
+            .iter()
+            .find(|(id, _)| *id == player_id)
+            .expect("player outcome missing");
+        assert!(matches!(player_outcome.1, Outcome::Lost(_)));
+    }
+
+    #[test]
+    fn shuffle_deck_changes_order() {
+        let original = new_deck();
+        let mut shuffled = new_deck();
+        shuffle_deck(&mut shuffled);
+        // A 52-card Fisher-Yates shuffle virtually never produces the identity permutation.
+        // Compare by Debug representation since Card doesn't implement PartialEq.
+        let original_repr: Vec<String> = original.iter().map(|c| format!("{:?}", c)).collect();
+        let shuffled_repr: Vec<String> = shuffled.iter().map(|c| format!("{:?}", c)).collect();
+        assert_ne!(
+            original_repr, shuffled_repr,
+            "shuffled deck should differ from the original ordering"
+        );
+    }
+}
